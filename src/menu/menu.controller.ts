@@ -15,7 +15,7 @@ import { Public, ResponseMessage, User } from 'src/decorator/customize';
 import { IUser } from 'src/types/global.constanst';
 import { MenuGateway } from './menu.gateway';
 
-@Controller('menu')
+@Controller('menus')
 export class MenuController {
   constructor(
     private readonly menuService: MenuService,

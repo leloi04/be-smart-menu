@@ -11,6 +11,9 @@ import { PermissionsModule } from './permissions/permissions.module';
 import { FilesModule } from './files/files.module';
 import { MenuModule } from './menu/menu.module';
 import { TableModule } from './table/table.module';
+import { OrderModule } from './order/order.module';
+import { RedisCacheModule } from './redis-cache/redis-cache.module';
+import { PaymentsModule } from './payments/payments.module';
 
 @Module({
   imports: [
@@ -36,6 +39,9 @@ import { TableModule } from './table/table.module';
     PermissionsModule,
     MenuModule,
     TableModule,
+    OrderModule,
+    RedisCacheModule,
+    PaymentsModule,
   ],
   controllers: [AppController],
   providers: [AppService],
