@@ -14,6 +14,10 @@ import { TableModule } from './table/table.module';
 import { OrderModule } from './order/order.module';
 import { RedisCacheModule } from './redis-cache/redis-cache.module';
 import { PaymentsModule } from './payments/payments.module';
+import { ReservationsModule } from './reservations/reservations.module';
+import { ScheduleModule } from '@nestjs/schedule';
+import { BullQueueModule } from './bull-queue/bull-queue.module';
+import { PreOrderModule } from './pre-order/pre-order.module';
 
 @Module({
   imports: [
@@ -32,6 +36,7 @@ import { PaymentsModule } from './payments/payments.module';
       envFilePath: '.env',
       isGlobal: true,
     }),
+    ScheduleModule.forRoot(),
     UsersModule,
     AuthModule,
     FilesModule,
@@ -42,6 +47,9 @@ import { PaymentsModule } from './payments/payments.module';
     OrderModule,
     RedisCacheModule,
     PaymentsModule,
+    ReservationsModule,
+    BullQueueModule,
+    PreOrderModule,
   ],
   controllers: [AppController],
   providers: [AppService],

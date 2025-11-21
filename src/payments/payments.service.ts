@@ -1,9 +1,19 @@
-import { Injectable } from '@nestjs/common';
+import { BadRequestException, Injectable } from '@nestjs/common';
 import { CreatePaymentDto } from './dto/create-payment.dto';
 import { UpdatePaymentDto } from './dto/update-payment.dto';
+import { InjectModel } from '@nestjs/mongoose';
+import { Payment, PaymentDocument } from './schemas/payment.schema';
+import { SoftDeleteModel } from 'soft-delete-plugin-mongoose';
+import * as crypto from 'crypto';
+import * as qs from 'qs';
 
 @Injectable()
 export class PaymentsService {
+  constructor(
+    @InjectModel(Payment.name)
+    private PaymentModel: SoftDeleteModel<PaymentDocument>,
+  ) {}
+
   create(createPaymentDto: CreatePaymentDto) {
     return 'This action adds a new payment';
   }
@@ -22,5 +32,151 @@ export class PaymentsService {
 
   remove(id: number) {
     return `This action removes a #${id} payment`;
+  }
+
+  async createVnpayUrl(orderId: string, amount: number) {
+    const tmnCode = process.env.VNP_TMN_CODE;
+    const secretKey = process.env.VNP_HASH_SECRET;
+    const vnpUrl = process.env.VNP_URL;
+    const returnUrl = process.env.VNP_RETURN_URL;
+
+    const payment = await this.PaymentModel.create({
+      orderId,
+      method: 'vnpay',
+      amount,
+    });
+
+    const date = new Date();
+    const createDate = date
+      .toISOString()
+      .replace(/[-:TZ.]/g, '')
+      .slice(0, 14);
+
+    const txnRef = `${payment._id.toString().slice(-6)}${Date.now()}`;
+
+    const vnp_Params: Record<string, any> = {
+      vnp_Version: '2.1.0',
+      vnp_Command: 'pay',
+      vnp_TmnCode: tmnCode,
+      vnp_Locale: 'vn',
+      vnp_CurrCode: 'VND',
+      vnp_TxnRef: txnRef,
+      vnp_OrderInfo: `Thanh toan don hang ${orderId}`,
+      vnp_OrderType: 'billpayment',
+      vnp_Amount: amount * 100,
+      vnp_ReturnUrl: `${returnUrl}?paymentId=${payment._id}`,
+      vnp_IpAddr: '127.0.0.1',
+      vnp_CreateDate: createDate,
+    };
+
+    const sorted: Record<string, any> = Object.keys(vnp_Params)
+      .sort()
+      .reduce((obj, key) => {
+        obj[key] = vnp_Params[key];
+        return obj;
+      }, {});
+
+    const signData = new URLSearchParams(sorted).toString();
+    const hmac = crypto.createHmac('sha512', secretKey!);
+    const signed = hmac.update(signData).digest('hex');
+    sorted['vnp_SecureHash'] = signed;
+
+    const paymentUrl = `${vnpUrl}?${new URLSearchParams(sorted).toString()}`;
+    return { url: paymentUrl };
+  }
+
+  /**
+   * 🧾 Xử lý callback trả về từ VNPAY (sandbox)
+   */
+  async handleVnpayReturn(query: Record<string, string>) {
+    const secretKey = process.env.VNP_HASH_SECRET;
+    const paymentId = query.paymentId;
+
+    // 🧩 Sao chép & loại bỏ các tham số không cần thiết trước khi ký
+    const vnp_Params = { ...query };
+    const secureHash = vnp_Params['vnp_SecureHash'];
+    delete vnp_Params['vnp_SecureHash'];
+    delete vnp_Params['vnp_SecureHashType'];
+    delete vnp_Params['paymentId'];
+
+    // 🧩 Sắp xếp lại key theo thứ tự alphabet
+    const sorted = Object.keys(vnp_Params)
+      .sort()
+      .reduce(
+        (obj, key) => {
+          obj[key] = vnp_Params[key];
+          return obj;
+        },
+        {} as Record<string, string>,
+      );
+
+    // 🧩 Tạo chuỗi ký đúng chuẩn (không encode)
+    const signData = new URLSearchParams(sorted).toString();
+    const hmac = crypto.createHmac('sha512', secretKey!);
+    const signed = hmac.update(signData).digest('hex');
+
+    // 🧩 Kiểm tra chữ ký hợp lệ
+    const isValid = signed === secureHash;
+
+    if (!isValid) {
+      await this.PaymentModel.findByIdAndUpdate(paymentId, {
+        status: 'failed',
+      });
+      throw new BadRequestException(
+        '❌ Chữ ký không hợp lệ — dữ liệu có thể bị giả mạo!',
+      );
+    }
+
+    // ✅ Kiểm tra mã phản hồi từ VNPAY
+    if (query.vnp_ResponseCode === '00') {
+      // Thanh toán thành công
+      await this.PaymentModel.findByIdAndUpdate(paymentId, {
+        status: 'completed',
+        transactionCode: query.vnp_TransactionNo,
+      });
+      return {
+        success: true,
+        message: '✅ Thanh toán thành công!',
+        transactionCode: query.vnp_TransactionNo,
+      };
+    }
+
+    // ❌ Nếu mã phản hồi khác 00, coi là thất bại
+    await this.PaymentModel.findByIdAndUpdate(paymentId, {
+      status: 'failed',
+    });
+
+    return {
+      success: false,
+      message: `❌ Thanh toán thất bại (mã: ${query.vnp_ResponseCode})`,
+    };
+  }
+
+  /**
+   * 💵 Thanh toán bằng tiền mặt
+   */
+  async createCashPayment(orderId: string, amount: number) {
+    // Giả lập transactionCode
+    const transactionCode = `CASH-${Date.now()}`;
+
+    const payment = await this.PaymentModel.create({
+      orderId,
+      method: 'cash',
+      amount,
+      transactionCode,
+    });
+
+    return {
+      success: true,
+      message: 'Thanh toán tiền mặt thành công',
+      payment,
+    };
+  }
+
+  /**
+   * 🔍 Lấy lịch sử thanh toán của 1 đơn hàng
+   */
+  async getPaymentByOrder(orderId: string) {
+    return this.PaymentModel.find({ orderId }).sort({ createdAt: -1 });
   }
 }

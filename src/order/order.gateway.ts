@@ -8,9 +8,7 @@ import {
 import { Server, Socket } from 'socket.io';
 import { forwardRef, Inject } from '@nestjs/common';
 import { OrderService } from './order.service';
-import { TableService } from 'src/table/table.service';
 import { RedisService } from 'src/redis-cache/redis-cache.service';
-import { table } from 'console';
 
 @WebSocketGateway({
   cors: {
@@ -27,6 +25,17 @@ export class OrderGateway {
     private readonly redis: RedisService,
   ) {}
 
+  // 🔧 HÀM LỌC QUANTITY > 0
+  private sanitizeOrder(orderItems: any[]) {
+    if (!Array.isArray(orderItems)) return [];
+    return orderItems
+      .filter((item) => item.quantity > 0)
+      .map((item) => ({
+        ...item,
+        quantity: Number(item.quantity || 0),
+      }));
+  }
+
   // 🪑 Khi user join bàn
   @SubscribeMessage('joinTable')
   async handleJoinTable(
@@ -35,62 +44,60 @@ export class OrderGateway {
   ) {
     const { tableId, tableNumber } = data;
     client.join(`table_${tableNumber}`);
-    console.log(`🪑 Client ${client.id} joined table ${tableNumber}`);
 
-    // Lấy order hiện tại từ Redis, nếu chưa có thì tìm trong DB
     const redisKey = `table_${tableNumber}`;
+    const redisFirstKey = `first_order_${tableNumber}`;
+
     let currentOrder = await this.redis.get(redisKey);
-    const dataOrderCurrent = await this.orderService.getOrderByTable(tableId);
-    const currentOrderProcessing = dataOrderCurrent?.progressStatus;
+
+    const dbOrder = await this.orderService.getOrderByTable(tableId);
+    const currentOrderProcessing = dbOrder?.progressStatus;
 
     if (!currentOrder) {
-      currentOrder = {
-        orderItems: dataOrderCurrent?.orderItems || [],
-        totalPrice: dataOrderCurrent?.totalPrice || 0,
-      };
-      if (currentOrder) {
-        await this.redis.set(redisKey, currentOrder, 7200); // TTL 2h
-      }
+      currentOrder = { orderItems: [], totalPrice: 0 };
+      await this.redis.set(redisKey, currentOrder, 7200);
     }
 
-    // Gửi lại cho client hiện tại
-    if (currentOrder) {
-      client.emit('currentOrder', currentOrder);
-      client.emit('currentOrderProcessing', currentOrderProcessing);
-    } else {
-      client.emit('currentOrder', null);
+    const firstOrder = await this.redis.get(redisFirstKey);
+
+    if (!firstOrder && dbOrder) {
+      await this.redis.set(redisFirstKey, currentOrder, 7200);
     }
+
+    client.emit('currentOrder', currentOrder);
+    client.emit('currentOrderProcessing', currentOrderProcessing);
+    client.emit('firstOrder', firstOrder || null);
   }
 
-  // 🔄 Khi người dùng thêm món (chưa gửi order)
+  // 🔄 FE thay đổi order (chưa gửi)
   @SubscribeMessage('updateOrder')
   async handleUpdateOrder(
     @MessageBody()
     data: {
-      currentOrderId: string;
-      updateOrder: any;
+      updateOrder: any[];
       totalPrice: number;
       tableNumber: string;
     },
   ) {
-    const {
-      currentOrderId: orderId,
-      updateOrder: orderItems,
-      totalPrice,
-      tableNumber,
-    } = data;
+    const { updateOrder: orderItems, totalPrice, tableNumber } = data;
+
     const redisKey = `table_${tableNumber}`;
+
+    // ✔ Lọc quantity > 0
+    const cleanOrderItems = this.sanitizeOrder(orderItems);
+
+    // FE có thể gửi rỗng, nhưng backend vẫn giữ object hợp lệ
     const updatedOrder = {
-      orderItems,
-      totalPrice,
+      orderItems: cleanOrderItems,
+      totalPrice: cleanOrderItems.length === 0 ? 0 : totalPrice,
     };
 
-    this.server.to(`table_${tableNumber}`).emit('orderUpdated', updatedOrder);
-
     await this.redis.set(redisKey, updatedOrder, 7200);
+
+    this.server.to(`table_${tableNumber}`).emit('orderUpdated', updatedOrder);
   }
 
-  // 📤 Khi khách gửi order
+  // 📤 Khách gửi order
   @SubscribeMessage('sendOrder')
   async handleSendOrder(
     @MessageBody()
@@ -112,53 +119,57 @@ export class OrderGateway {
       isAddItems,
     } = data;
 
+    const redisKey = `table_${tableNumber}`;
+    const redisFirstKey = `first_order_${tableNumber}`;
+
+    // ✔ Lọc quantity > 0 trước khi xử lý DB
+    const cleanOrderItems = this.sanitizeOrder(orderItems);
+
     if (isAddItems) {
-      const oldOrder = await this.orderService.findOne(currentOrderId);
+      const firstOrder = (await this.redis.get(redisFirstKey)) || {
+        orderItems: [],
+        totalPrice: 0,
+      };
 
-      const addedItems = orderItems
-        .map((newItem) => {
-          const oldItem = oldOrder.orderItems.find(
-            (o) => o.menuItemId.toString() === newItem.menuItemId.toString(),
-          );
+      const updatedOrder = {
+        orderItems: [...firstOrder.orderItems, ...cleanOrderItems],
+        totalPrice: firstOrder.totalPrice + totalPrice,
+      };
 
-          if (!oldItem) {
-            // 🍽️ Món mới hoàn toàn
-            return { ...newItem, addedQuantity: newItem.quantity };
-          }
-
-          // 🔢 Nếu tăng số lượng → tính phần chênh lệch
-          if (newItem.quantity > oldItem.quantity) {
-            const diff = newItem.quantity - oldItem.quantity;
-            return { ...newItem, addedQuantity: diff };
-          }
-
-          // 🚫 Không thêm món hoặc giảm số lượng → bỏ qua
-          return null;
-        })
-        .filter(Boolean);
-
-      console.log('oldOrder', oldOrder);
-      console.log('j.sahjfasdjhklafdsjhklfadsfajhdkslafdjhkslafdsjkhlfdalkj;n');
-      console.log('orderItems', orderItems);
-      console.log('j.sahjfasdjhklafdsjhklfadsfajhdkslafdjhkslafdsjkhlfdalkj;n');
-      console.log('addedItems', addedItems);
-      // 🔥 Emit riêng cho bếp (để biết có món mới)
-      // if (addedItems.length > 0) {
-      //   this.server.emit('newAddedItems', { tableNumber, addedItems });
-      // }
+      console.log('🔹 Thêm món:', updatedOrder);
     } else {
+      // 🚀 Gửi order lần đầu
       await this.emitOrderStatusChanged(tableNumber, statusChanged);
 
       await this.orderService.update(currentOrderId, {
-        orderItems,
+        orderItems: cleanOrderItems,
         totalPrice,
         progressStatus: statusChanged,
         paymentStatus: 'unpaid',
       });
+
+      await this.redis.set(redisFirstKey, {
+        orderItems: cleanOrderItems,
+        totalPrice,
+      });
+
+      await this.redis.set(redisKey, {
+        orderItems: cleanOrderItems,
+        totalPrice,
+      });
+
+      this.server
+        .to(`table_${tableNumber}`)
+        .emit('firstOrder', { orderItems: cleanOrderItems, totalPrice });
+
+      // FE reset
+      await this.redis.set(redisKey, { orderItems: [], totalPrice: 0 });
+      this.server
+        .to(`table_${tableNumber}`)
+        .emit('orderUpdated', { orderItems: [], totalPrice: 0 });
     }
   }
 
-  // 💰 Khi khách thanh toán
   @SubscribeMessage('orderPaid')
   async handleOrderPaid(@MessageBody() orderId: string) {
     const { order, table } = await this.orderService.markOrderPaid(orderId);
@@ -167,17 +178,14 @@ export class OrderGateway {
     this.server.to(`table_${order.tableId}`).emit('tableStatusChanged', table);
   }
 
-  // 🚪 Khi client rời bàn
   @SubscribeMessage('leaveTable')
   handleLeaveTable(
     @MessageBody() tableId: string,
     @ConnectedSocket() client: Socket,
   ) {
     client.leave(`table_${tableId}`);
-    console.log(`🚪 Client ${client.id} left table_${tableId}`);
   }
 
-  // ⚡ Hàm tiện ích để emit từ service
   async emitOrderUpdate(tableId: string, order: any) {
     this.server.to(`table_${tableId}`).emit('orderUpdatedRealtime', order);
   }
