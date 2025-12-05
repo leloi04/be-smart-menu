@@ -10,9 +10,17 @@ export class Reservation {
   @Prop({
     type: mongoose.Schema.Types.ObjectId,
     ref: User.name,
-    required: true,
   })
-  customerId: mongoose.Schema.Types.ObjectId;
+  customerId?: mongoose.Schema.Types.ObjectId;
+
+  @Prop()
+  customerName: string;
+
+  @Prop()
+  customerPhone: string;
+
+  @Prop()
+  customerEmail?: string;
 
   @Prop({
     type: mongoose.Schema.Types.ObjectId,
@@ -28,7 +36,7 @@ export class Reservation {
   timeSlot: string; // "HH:mm"
 
   @Prop({ required: true })
-  peopleCount: number;
+  capacity: number;
 
   @Prop({
     type: String,

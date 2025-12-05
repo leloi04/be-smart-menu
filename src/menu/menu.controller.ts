@@ -39,6 +39,7 @@ export class MenuController {
     return this.menuService.findAll(+currentPage, +limit, qs);
   }
 
+  @Public()
   @Get(':id')
   @ResponseMessage('Fetch menu item by id')
   findOne(@Param('id') id: string) {
@@ -71,5 +72,20 @@ export class MenuController {
     const updatedItem = await this.menuService.updateStatus(id, status);
     this.menuGateway.emitMenuUpdate(updatedItem); // 🔥 Phát realtime
     return { success: true, updatedItem };
+  }
+
+  // Lấy danh sách món ăn theo category
+  @Public()
+  @Post('/category')
+  @ResponseMessage('Get category menu items')
+  getCategoryMenuItems() {
+    return this.menuService.getCategoryMenuItems();
+  }
+
+  @Public()
+  @Post('/items')
+  @ResponseMessage('Get all menu items')
+  getMenuItems() {
+    return this.menuService.getMenuItems();
   }
 }

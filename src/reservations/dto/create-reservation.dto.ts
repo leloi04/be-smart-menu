@@ -8,6 +8,14 @@ import {
 } from 'class-validator';
 
 export class CreateReservationDto {
+  @IsString()
+  @IsNotEmpty({ message: 'customerName không được để trống' })
+  customerName: string;
+
+  @IsString()
+  @IsNotEmpty({ message: 'customerPhone không được để trống' })
+  customerPhone: string;
+
   @IsMongoId()
   @IsNotEmpty({ message: 'tableId không được để trống' })
   tableId: string;
@@ -21,8 +29,8 @@ export class CreateReservationDto {
   timeSlot: string; // "HH:mm"
 
   @IsNumber()
-  @IsNotEmpty({ message: 'peopleCount không được để trống' })
-  peopleCount: number;
+  @IsNotEmpty({ message: 'capacity không được để trống' })
+  capacity: number;
 
   @IsOptional()
   @IsString()
@@ -31,4 +39,8 @@ export class CreateReservationDto {
   @IsOptional()
   @IsString()
   status?: string;
+
+  @IsOptional()
+  @IsString()
+  tableNumber?: string;
 }

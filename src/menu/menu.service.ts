@@ -95,4 +95,21 @@ export class MenuService {
     await item.save();
     return item;
   }
+
+  async getCategoryMenuItems() {
+    const categories = Object(await this.MenuModel.find({})).reduce(
+      (acc, item) => {
+        if (!acc.includes(item.category)) {
+          acc.push(item.category);
+        }
+        return acc;
+      },
+      [],
+    );
+    return categories;
+  }
+
+  async getMenuItems() {
+    return await this.MenuModel.find({});
+  }
 }

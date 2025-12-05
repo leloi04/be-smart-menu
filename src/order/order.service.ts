@@ -12,6 +12,7 @@ import { CreateOrderDto } from './dto/create-order.dto';
 import { UpdateOrderDto } from './dto/update-order.dto';
 import { IUser } from 'src/types/global.constanst';
 import { OrderGateway } from './order.gateway';
+import { RedisService } from 'src/redis-cache/redis-cache.service';
 
 @Injectable()
 export class OrderService {
@@ -21,6 +22,7 @@ export class OrderService {
     @InjectModel(Table.name)
     private TableModel: SoftDeleteModel<TableDocument>,
     private readonly orderGateway: OrderGateway,
+    private readonly redis: RedisService,
   ) {}
 
   // 🧾 Tạo order (REST API hoặc Socket)
@@ -193,16 +195,48 @@ export class OrderService {
   }
 
   async changedStatus(tableNumber: string, orderId: string, status: string) {
-    const order = await this.OrderModel.findByIdAndUpdate(
-      orderId,
-      { progressStatus: status },
-      { new: true },
-    );
+    switch (status) {
+      case 'draft':
+        await this.redis.del(`first_order_${tableNumber}`);
+        this.orderGateway.server
+          .to(`table_${tableNumber}`)
+          .emit('firstOrder', { orderItems: [], totalPrice: 0 });
+        await this.OrderModel.findByIdAndUpdate(
+          orderId,
+          {
+            totalPrice: 0,
+            orderItems: [],
+            progressStatus: status,
+          },
+          { new: true },
+        );
+        break;
+      case 'pending_confirmation':
+        break;
+      case 'processing':
+        const order = await this.redis.get(`first_order_${tableNumber}`);
+        if (!order) {
+          throw new NotFoundException('Order not found in Redis');
+        }
+        const totalItems = order.orderItems.length || 0;
+        await this.orderGateway.processOrderItems(
+          order.orderItems,
+          tableNumber,
+          `first_order_${tableNumber}`,
+        );
+        await this.OrderModel.findByIdAndUpdate(
+          orderId,
+          { progressStatus: status },
+          { new: true },
+        );
+        await this.orderGateway.handleDataTable(tableNumber, totalItems, []);
+        break;
+      case 'completed':
+        break;
+      default:
+        throw new BadRequestException('Invalid status value');
+    }
 
     await this.orderGateway.emitOrderStatusChanged(tableNumber, status);
-
-    return {
-      progressStatus: order?.progressStatus,
-    };
   }
 }

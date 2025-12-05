@@ -41,4 +41,8 @@ export class CreateMenuDto {
 
   @IsOptional()
   toppings?: { name: string; price: number }[];
+
+  @IsString()
+  @IsNotEmpty({ message: 'kitchenArea không được để trống' })
+  kitchenArea: string;
 }

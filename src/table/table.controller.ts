@@ -75,4 +75,11 @@ export class TableController {
       tableNumber: table.tableNumber,
     };
   }
+
+  @Public()
+  @Post('data')
+  @ResponseMessage('Fetch all table')
+  getAllTable() {
+    return this.tableService.getAllTable();
+  }
 }

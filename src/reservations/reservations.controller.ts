@@ -18,13 +18,11 @@ import { IUser } from 'src/types/global.constanst';
 export class ReservationsController {
   constructor(private readonly reservationsService: ReservationsService) {}
 
+  @Public()
   @Post()
   @ResponseMessage('Create a reservation table in advance')
-  create(
-    @Body() createReservationDto: CreateReservationDto,
-    @User() user: IUser,
-  ) {
-    return this.reservationsService.create(createReservationDto, user);
+  create(@Body() createReservationDto: CreateReservationDto) {
+    return this.reservationsService.create(createReservationDto);
   }
 
   @Get()

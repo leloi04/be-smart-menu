@@ -120,4 +120,8 @@ export class TableService {
   async findByToken(token: string) {
     return this.TableModel.findOne({ token });
   }
+
+  async getAllTable() {
+    return this.TableModel.find({});
+  }
 }

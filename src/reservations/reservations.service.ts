@@ -1,4 +1,9 @@
-import { Injectable, Logger, OnModuleInit } from '@nestjs/common';
+import {
+  BadRequestException,
+  Injectable,
+  Logger,
+  OnModuleInit,
+} from '@nestjs/common';
 import { CreateReservationDto } from './dto/create-reservation.dto';
 import { UpdateReservationDto } from './dto/update-reservation.dto';
 import { InjectModel } from '@nestjs/mongoose';
@@ -7,6 +12,7 @@ import { SoftDeleteModel } from 'soft-delete-plugin-mongoose';
 import { IUser } from 'src/types/global.constanst';
 import aqp from 'api-query-params';
 import { BullQueueService } from 'src/bull-queue/bull-queue.service';
+import { ReservationsGateway } from './reservations.gateway';
 
 @Injectable()
 export class ReservationsService implements OnModuleInit {
@@ -15,6 +21,7 @@ export class ReservationsService implements OnModuleInit {
   constructor(
     @InjectModel(Reservation.name)
     private ReservationModel: SoftDeleteModel<ReservationDocument>,
+    private readonly reservationsGateway: ReservationsGateway,
     private readonly bullQueueService: BullQueueService,
   ) {}
 
@@ -27,15 +34,26 @@ export class ReservationsService implements OnModuleInit {
   }
 
   /** 🧾 Tạo mới đặt bàn */
-  async create(createReservationDto: CreateReservationDto, user: IUser) {
-    const result = await this.ReservationModel.create({
-      ...createReservationDto,
-      customerId: user._id,
-      createdBy: {
-        _id: user._id,
-        email: user.email,
-      },
+  async create(createReservationDto: CreateReservationDto) {
+    const { date, timeSlot, tableId } = createReservationDto;
+    const isExisting = await this.ReservationModel.findOne({
+      date,
+      timeSlot,
+      tableId,
+    }).populate({
+      path: 'tableId',
+      select: { tableNumber: 1, _id: 1 },
     });
+    const dataTable = isExisting?.tableId as any as {
+      _id: string;
+      tableNumber: string;
+    };
+    if (isExisting) {
+      throw new BadRequestException(
+        `${timeSlot} vào ngày ${date} đã có người đặt trước bàn ${dataTable?.tableNumber}`,
+      );
+    }
+    const result = await this.ReservationModel.create(createReservationDto);
 
     return {
       _id: result._id,

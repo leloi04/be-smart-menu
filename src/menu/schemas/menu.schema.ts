@@ -29,6 +29,9 @@ export class Menu {
   @Prop({ default: 0 })
   averageRating: number;
 
+  @Prop()
+  kitchenArea: string;
+
   @Prop({ type: [{ size: String, price: Number }] })
   variants: { size: string; price: number }[];
 

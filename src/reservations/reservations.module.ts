@@ -7,6 +7,7 @@ import { Table, TableSchema } from 'src/table/schemas/table.schema';
 import { User, UserSchema } from 'src/users/schemas/user.schema';
 import { BullQueueModule } from 'src/bull-queue/bull-queue.module';
 import { ReservationsGateway } from './reservations.gateway';
+import { RedisService } from 'src/redis-cache/redis-cache.service';
 
 @Module({
   imports: [
@@ -18,7 +19,7 @@ import { ReservationsGateway } from './reservations.gateway';
     BullQueueModule,
   ],
   controllers: [ReservationsController],
-  providers: [ReservationsService, ReservationsGateway],
-  exports: [ReservationsService, ReservationsGateway, MongooseModule],
+  providers: [ReservationsService, ReservationsGateway, RedisService],
+  exports: [ReservationsService],
 })
 export class ReservationsModule {}
