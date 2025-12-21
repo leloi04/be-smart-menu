@@ -48,8 +48,8 @@ export class OrderGateway {
     const redisKey = `table_${tableNumber}`; // order đang xử lý ở FE
     const redisFirstKey = `first_order_${tableNumber}`; // order gốc lần đầu
     const addOrderKey = `add_order_${tableNumber}`; // mảng batch add items
+    const completedOrderKey = `completed_order_${tableNumber}`; // order đã hoàn thành
 
-    // 1️⃣ Lấy current order đang xử lý
     let currentOrder = await this.redis.get(redisKey);
 
     // 2️⃣ Lấy order từ DB
@@ -64,10 +64,10 @@ export class OrderGateway {
 
     // 4️⃣ Khởi tạo firstOrder nếu chưa có
     let firstOrder = await this.redis.get(redisFirstKey);
-    if (!firstOrder && dbOrder) {
+    if (!firstOrder) {
       firstOrder = {
-        orderItems: dbOrder.orderItems || [],
-        totalPrice: dbOrder.totalPrice || 0,
+        orderItems: [],
+        totalPrice: 0,
       };
       await this.redis.set(redisFirstKey, firstOrder, 7200);
     }
@@ -79,11 +79,17 @@ export class OrderGateway {
       await this.redis.set(addOrderKey, addOrders, 7200);
     }
 
-    // 6️⃣ Emit dữ liệu về FE
+    let completedOrders = await this.redis.get(completedOrderKey);
+    if (!completedOrders) {
+      completedOrders = [];
+    }
+
+    // Emit dữ liệu về FE
     client.emit('currentOrder', currentOrder);
     client.emit('currentOrderProcessing', currentOrderProcessing);
     client.emit('firstOrder', firstOrder);
-    client.emit('addOrders', addOrders); // FE có thể hiển thị các batch thêm
+    client.emit('addOrders', addOrders);
+    client.emit('completedOrders', completedOrders);
   }
 
   // 🔄 FE thay đổi order (chưa gửi)
@@ -145,8 +151,9 @@ export class OrderGateway {
 
     if (isAddItems) {
       if (isAddItems) {
+        await this.emitOrderStatusChanged(tableNumber, statusChanged);
+
         const batchId = `${Date.now()}`;
-        const addOrderKey = `add_order_${tableNumber}`;
 
         // Lấy danh sách batch hiện tại
         const existingBatches = (await this.redis.get(addOrderKey)) || [];
@@ -167,31 +174,44 @@ export class OrderGateway {
         // Gửi lần thêm về FE
         this.server.to(`table_${tableNumber}`).emit('addItemsOrder', newBatch);
 
+        const notificationKey = 'notification_table_order';
+        const existingNotifications =
+          (await this.redis.get(notificationKey)) || [];
+        const newOrderNotification = {
+          keyRedis: addOrderKey,
+          batchId,
+          id: currentOrderId,
+          tableNumber,
+          orderItems: cleanOrderItems,
+          totalPrice,
+          timestamp: new Date().toISOString(),
+        };
+        await this.redis.set(notificationKey, [
+          ...existingNotifications,
+          newOrderNotification,
+        ]);
+
+        this.server
+          .to('staff_room')
+          .emit('newOrderTable', newOrderNotification);
+
         // FE reset
         await this.redis.set(redisKey, { orderItems: [], totalPrice: 0 });
         this.server
           .to(`table_${tableNumber}`)
           .emit('orderUpdated', { orderItems: [], totalPrice: 0 });
 
-        // Gửi cho staff
-        // this.server.to("staff_room").emit("newOrderTable", {
-        //   type: "addItems",
-        //   ...newBatch,
-        //   tableNumber,
-        // });
+        await this.orderService.changedStatus(
+          { tableNumber },
+          currentOrderId,
+          statusChanged,
+          redisKey,
+        );
 
         return;
       }
     } else {
-      // 🚀 Gửi order lần đầu
       await this.emitOrderStatusChanged(tableNumber, statusChanged);
-
-      await this.orderService.update(currentOrderId, {
-        orderItems: cleanOrderItems,
-        totalPrice,
-        progressStatus: statusChanged,
-        paymentStatus: 'unpaid',
-      });
 
       await this.redis.set(
         redisFirstKey,
@@ -214,6 +234,7 @@ export class OrderGateway {
       const existingNotifications =
         (await this.redis.get(notificationKey)) || [];
       const newOrderNotification = {
+        keyRedis: redisFirstKey,
         id: currentOrderId,
         tableNumber,
         orderItems: cleanOrderItems,
@@ -240,6 +261,13 @@ export class OrderGateway {
       this.server
         .to(`table_${tableNumber}`)
         .emit('orderUpdated', { orderItems: [], totalPrice: 0 });
+
+      await this.orderService.changedStatus(
+        { tableNumber },
+        currentOrderId,
+        statusChanged,
+        redisKey,
+      );
     }
   }
 
@@ -286,14 +314,84 @@ export class OrderGateway {
     });
   }
 
-  // @SubscribeMessage('handleConfirmNotify')
-  // async handleConfirmNotify(@MessageBody() dataConfirm: any[]) {
-  //   const notificationKey = 'notification_table_order';
+  @SubscribeMessage('handleConfirmNotify')
+  async handleConfirmNotify(
+    @MessageBody()
+    dataConfirm: {
+      id: string;
+      key: string;
+      orderItems?: any;
+      priceOrder?: string | number;
+    },
+  ) {
+    const { id, key, orderItems, priceOrder } = dataConfirm;
 
-  //   await this.redis.set(notificationKey, dataConfirm);
+    const orderItemUpdate = orderItems.map((o) => ({
+      menuItemId: o.id,
+      name: o.name,
+      quantity: o.qty,
+      variant: o.variant,
+      toppings: o.toppings,
+    }));
 
-  //   this.server.to('staff_room').emit('staffNotificationSync', dataConfirm);
-  // }
+    await this.orderService.updateOrderItems(id, orderItemUpdate, priceOrder);
+
+    const dataNotificationTable = await this.redis.get(key);
+    const confirmData = dataNotificationTable.filter(
+      (item: any) => id !== item.id,
+    );
+
+    await this.redis.set(key, confirmData);
+
+    if (key === 'notification_table_order') {
+      this.server
+        .to('staff_room')
+        .emit('staffTableNotificationSync', confirmData);
+    } else {
+      this.server
+        .to('staff_room')
+        .emit('staffPreOrderNotificationSync', confirmData);
+    }
+  }
+
+  @SubscribeMessage('handleCancelNotify')
+  async handleCancelNotify(
+    @MessageBody()
+    dataCancel: {
+      id: string;
+      key: string;
+      batchId?: string;
+      customerName?: string;
+      keyTb: string;
+    },
+  ) {
+    const { id, key, batchId, customerName, keyTb } = dataCancel;
+
+    if (batchId) {
+      const dataKey = await this.redis.get(key);
+      const dataKeyUpdate = dataKey.filter((i) => i.batchId !== batchId);
+      await this.redis.set(key, dataKeyUpdate, 7200);
+    } else {
+      await this.redis.set(key, [], 7200);
+    }
+
+    const dataNotificationTable = await this.redis.get(keyTb);
+    const cancelData = dataNotificationTable.filter(
+      (item: any) => id !== item.id,
+    );
+
+    await this.redis.set(keyTb, cancelData);
+
+    if (keyTb === 'notification_table_order') {
+      this.server
+        .to('staff_room')
+        .emit('staffTableNotificationSync', cancelData);
+    } else {
+      this.server
+        .to('staff_room')
+        .emit('staffPreOrderNotificationSync', cancelData);
+    }
+  }
 
   @SubscribeMessage('emitGetDataInKeyRedis')
   async handleGetDataInKeyRedis(
@@ -316,12 +414,14 @@ export class OrderGateway {
     this.server.to(`table_${tableNumber}`).emit('orderStatusChanged', status);
   }
 
-  async processOrderItems(
-    orderItems: any[],
-    tableNumber: string,
-    dataKey: string,
-    batchId?: string,
-  ) {
+  async processOrderItems(data: {
+    orderItems: any[];
+    tableNumber?: string;
+    customerName?: string;
+    dataKey: string;
+    batchId?: string;
+  }) {
+    const { dataKey, orderItems, batchId, customerName, tableNumber } = data;
     if (!Array.isArray(orderItems) || orderItems.length === 0) return null;
 
     const timestamp = new Date().toISOString();
@@ -332,13 +432,22 @@ export class OrderGateway {
       const area = (item.kitchenArea || 'UNKNOWN').toUpperCase();
       if (!areaMapping[area]) areaMapping[area] = [];
 
-      areaMapping[area].push({
-        ...item,
-        dataKey,
-        batchId: batchId || null,
-        tableNumber,
-        timestamp,
-      });
+      if (tableNumber) {
+        areaMapping[area].push({
+          ...item,
+          dataKey,
+          batchId: batchId || null,
+          tableNumber,
+          timestamp,
+        });
+      } else {
+        areaMapping[area].push({
+          ...item,
+          dataKey,
+          customerName,
+          timestamp,
+        });
+      }
     }
 
     const savedAreas: Record<string, any> = {};
@@ -379,20 +488,274 @@ export class OrderGateway {
     orderItemsCompleted: any[],
   ) {
     const redisKey = 'data_table';
+
     const existingData = (await this.redis.get(redisKey)) || [];
 
-    const dataTable = {
-      tableNumber,
+    // tìm xem bàn đã tồn tại chưa
+    const existedIndex = existingData.findIndex(
+      (d: any) => d.tableNumber === tableNumber,
+    );
+
+    let updatedData;
+
+    if (existedIndex !== -1) {
+      // ✔ nếu tồn tại → cập nhật record cũ
+      const existed = existingData[existedIndex];
+
+      const updatedRecord = {
+        ...existed,
+        totalItems: existed.totalItems + totalItems,
+      };
+
+      updatedData = [...existingData];
+      updatedData[existedIndex] = updatedRecord;
+
+      // realtime
+      this.server.to('staff_room').emit('dataTableUpdated', updatedRecord);
+    } else {
+      // ✔ nếu chưa tồn tại → tạo mới
+      const newRecord = {
+        tableNumber,
+        totalItems,
+        orderItemsCompleted,
+        timestamp: new Date().toISOString(),
+      };
+
+      updatedData = [...existingData, newRecord];
+
+      // realtime
+      this.server.to('staff_room').emit('dataTableUpdated', newRecord);
+    }
+
+    // lưu vào redis
+    await this.redis.set(redisKey, updatedData);
+  }
+
+  async handleDataOnline(
+    id: string,
+    customerName: string,
+    totalItems: number,
+    orderItems: any[],
+    orderItemsCompleted: any[],
+  ) {
+    const redisKey = 'data_pre-order';
+    const existingData = (await this.redis.get(redisKey)) || [];
+    const dataPreOrder = {
+      id,
+      customerName,
       totalItems,
+      orderItems,
       orderItemsCompleted,
       timestamp: new Date().toISOString(),
     };
-
-    const updatedData = [...existingData, dataTable];
-
-    this.server.to('staff_room').emit('dataTableUpdated', dataTable);
-
+    const updatedData = [...existingData, dataPreOrder];
+    this.server.to('staff_room').emit('dataPreOrderUpdated', dataPreOrder);
     await this.redis.set(redisKey, updatedData);
+  }
+
+  @SubscribeMessage('handleCompletedItem')
+  async handleCompletedItem(@MessageBody() data: any) {
+    const { kitchenArea, tableNumber, batchId, dataKey, menuItemId } = data;
+    const dataTableKey = 'data_table';
+    const dataPreOrderKey = 'data_pre-order';
+    if (tableNumber) {
+      const firstOrderKey = `first_order_${tableNumber}`;
+      const addOrderKey = `add_order_${tableNumber}`;
+      const completedKey = `completed_order_${tableNumber}`;
+      const dataCompletedOrder = (await this.redis.get(completedKey)) || [];
+      if (batchId) {
+        // data Order
+        const dataOrderInKey = (await this.redis.get(dataKey)).find(
+          (i) => i.batchId == batchId,
+        ).orderItems;
+
+        // items different
+        const itemsDf = dataOrderInKey.filter(
+          (i) => i.menuItemId != menuItemId,
+        );
+        console.log('itemsDf: ', itemsDf);
+        // item completed
+        const item = dataOrderInKey.find((i) => i.menuItemId == menuItemId);
+        console.log('item: ', item);
+
+        const dataKeyRedisOrder = await this.redis.get(dataKey);
+
+        const dataInBatch = dataKeyRedisOrder.find((i) => i.batchId == batchId);
+        const dataExBatch = dataKeyRedisOrder.filter(
+          (i) => i.batchId !== batchId,
+        );
+        const dataReplaceOfBatch = {
+          ...dataInBatch,
+          orderItems: itemsDf,
+        };
+        const dataSetInKeyOrder = [dataReplaceOfBatch, ...dataExBatch];
+        await this.redis.set(dataKey, dataSetInKeyOrder, 7200);
+
+        this.server
+          .to(`table_${tableNumber}`)
+          .emit('addOrders', dataSetInKeyOrder);
+
+        const dataOrderCompleted = [
+          ...dataCompletedOrder,
+          {
+            dataKey,
+            batchId,
+            ...item,
+            timestamp: new Date().toISOString(),
+          },
+        ];
+        await this.redis.set(completedKey, dataOrderCompleted, 7200);
+
+        this.server
+          .to(`table_${tableNumber}`)
+          .emit('completedOrders', dataOrderCompleted);
+
+        // Set Completed order in data table of staff
+        const dataTable = await this.redis.get(dataTableKey);
+        const dataOfTableDf = dataTable.filter(
+          (i) => i.tableNumber != tableNumber,
+        );
+        const dataOfTableCurrent = dataTable.find(
+          (i) => i.tableNumber == tableNumber,
+        );
+        const orderItemsCompleted = [
+          ...dataOfTableCurrent.orderItemsCompleted,
+          {
+            batchId,
+            dataKey,
+            ...item,
+            timestamp: new Date().toISOString(),
+          },
+        ];
+        const dataSetIntoKey = [
+          ...dataOfTableDf,
+          {
+            ...dataOfTableCurrent,
+            orderItemsCompleted,
+          },
+        ];
+        await this.redis.set(dataTableKey, dataSetIntoKey);
+
+        this.server.to('staff_room').emit('dataTable', dataSetIntoKey);
+
+        // data orders in chef
+        const dataOrderInChef = await this.redis.get(`${kitchenArea}_chef`);
+
+        // data orders in chef df
+        const itemsDfInChef = dataOrderInChef.filter(
+          (i) =>
+            i.menuItemId !== menuItemId ||
+            i.dataKey !== dataKey ||
+            i.batchId !== batchId,
+        );
+
+        await this.redis.set(`${kitchenArea}_chef`, itemsDfInChef);
+
+        this.server.to(`${kitchenArea}_room`).emit('currentOrderItems', {
+          area: kitchenArea,
+          items: itemsDfInChef,
+        });
+      } else {
+        // data Order
+        const dataOrderInKey = (await this.redis.get(dataKey)).orderItems;
+
+        // items different
+        const itemsDf = dataOrderInKey.filter(
+          (i) => i.menuItemId != menuItemId,
+        );
+        // item completed
+        const item = dataOrderInKey.find((i) => i.menuItemId == menuItemId);
+
+        const dataKeyRedisOrder = await this.redis.get(dataKey);
+
+        const dataSetInKeyOrder = {
+          ...dataKeyRedisOrder,
+          orderItems: itemsDf,
+        };
+        await this.redis.set(dataKey, dataSetInKeyOrder, 7200);
+
+        this.server
+          .to(`table_${tableNumber}`)
+          .emit('firstOrder', dataSetInKeyOrder);
+
+        const dataOrderCompleted = [
+          ...dataCompletedOrder,
+          {
+            dataKey,
+            ...item,
+            timestamp: new Date().toISOString(),
+          },
+        ];
+        await this.redis.set(completedKey, dataOrderCompleted, 7200);
+
+        this.server
+          .to(`table_${tableNumber}`)
+          .emit('completedOrders', dataOrderCompleted);
+
+        // Set Completed order in data table of staff
+        const dataTable = await this.redis.get(dataTableKey);
+        const dataOfTableDf = dataTable.filter(
+          (i) => i.tableNumber != tableNumber,
+        );
+        const dataOfTableCurrent = dataTable.find(
+          (i) => i.tableNumber == tableNumber,
+        );
+        const orderItemsCompleted = [
+          ...dataOfTableCurrent.orderItemsCompleted,
+          {
+            dataKey,
+            ...item,
+            timestamp: new Date().toISOString(),
+          },
+        ];
+        const dataSetIntoKey = [
+          ...dataOfTableDf,
+          {
+            ...dataOfTableCurrent,
+            orderItemsCompleted,
+          },
+        ];
+        await this.redis.set(dataTableKey, dataSetIntoKey);
+
+        this.server.to('staff_room').emit('dataTable', dataSetIntoKey);
+
+        // data orders in chef
+        const dataOrderInChef = await this.redis.get(`${kitchenArea}_chef`);
+
+        // data orders in chef df
+        const itemsDfInChef = dataOrderInChef.filter(
+          (i) =>
+            i.menuItemId !== menuItemId ||
+            i.dataKey !== dataKey ||
+            i.batchId !== batchId,
+        );
+
+        await this.redis.set(`${kitchenArea}_chef`, itemsDfInChef);
+
+        this.server.to(`${kitchenArea}_room`).emit('currentOrderItems', {
+          area: kitchenArea,
+          items: itemsDfInChef,
+        });
+      }
+
+      const dataFirstOrder = (await this.redis.get(firstOrderKey)) || {
+        orderItems: [],
+      };
+      const dataAddsOrder = (await this.redis.get(addOrderKey)) || [
+        { orderItems: [] },
+      ];
+      const lengthFirstOrder = dataFirstOrder.orderItems.length;
+      const lengthAddsOrder = dataAddsOrder.reduce((a, c) => {
+        return a + c.orderItems.length;
+      }, 0);
+      console.log('lengthFirstOrder: ', lengthFirstOrder);
+      console.log('lengthAddsOrder: ', lengthAddsOrder);
+      if (lengthFirstOrder == 0 && lengthAddsOrder == 0) {
+        console.log(`Bàn ${tableNumber} da hoan thanh xong!`);
+        this.emitOrderStatusChanged(tableNumber, 'completed');
+        await this.orderService.completedOrder(tableNumber);
+      }
+    }
   }
 
   // 🧑‍🍳 Staff Join Room
@@ -400,17 +763,25 @@ export class OrderGateway {
   async handleJoinStaff(@ConnectedSocket() client: Socket) {
     client.join('staff_room');
 
-    // Lấy dữ liệu notification_table_order từ Redis
-    const notificationKey = 'notification_table_order';
-    const notifications = (await this.redis.get(notificationKey)) || []; // default rỗng
+    // Lấy dữ liệu notification từ Redis
+    const notificationTableKey = 'notification_table_order';
+    const notificationPreOrderKey = 'notification_pre-order';
+    const tableNotifications =
+      (await this.redis.get(notificationTableKey)) || []; // default rỗng
+    const preOrderNotifications =
+      (await this.redis.get(notificationPreOrderKey)) || []; // default rỗng
 
     // Lấy dữ liệu data_table từ Redis
     const redisKey = 'data_table';
+    const redisKeyPreOrder = 'data_pre-order';
     const dataTable = (await this.redis.get(redisKey)) || [];
+    const dataPreOrder = (await this.redis.get(redisKeyPreOrder)) || [];
 
     // Gửi lại cho staff vừa join
-    client.emit('staffNotificationSync', notifications);
+    client.emit('staffTableNotificationSync', tableNotifications);
+    client.emit('staffPreOrderNotificationSync', preOrderNotifications);
     client.emit('dataTable', dataTable);
+    client.emit('dataPreOrder', dataPreOrder);
 
     console.log(`Staff ${client.id} joined staff_room`);
   }

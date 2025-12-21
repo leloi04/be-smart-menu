@@ -13,6 +13,7 @@ export class PreOrder {
   @Prop({
     type: [
       {
+        kitchenArea: String,
         menuItemId: { type: mongoose.Schema.Types.ObjectId, ref: Menu.name },
         name: String,
         quantity: Number,
@@ -34,6 +35,7 @@ export class PreOrder {
     default: [],
   })
   orderItems: {
+    kitchenArea: string;
     menuItemId: mongoose.Schema.Types.ObjectId;
     name: string;
     quantity: number;
@@ -47,33 +49,85 @@ export class PreOrder {
       name: string;
       price: number;
     }[];
-    note?: string;
   }[];
 
   @Prop({ type: Number, required: true, default: 0 })
-  totalAmount: number;
+  totalItemPrice: number;
 
-  @Prop({ type: String, enum: ['pickup', 'delivery'], required: true })
-  method: 'pickup' | 'delivery';
+  @Prop({ type: Number, required: true, default: 0 })
+  totalPayment: number;
+
+  @Prop({ type: String, enum: ['pickup', 'ship'], required: true })
+  method: 'pickup' | 'ship';
 
   @Prop({ type: String, required: false })
   deliveryAddress?: string;
 
-  @Prop({ type: Date, required: false })
-  pickupTime?: Date;
+  @Prop({ type: String, required: false })
+  pickupTime?: string;
 
   @Prop({
     type: String,
-    enum: ['pending', 'paid', 'processing', 'completed', 'cancelled'],
+    enum: ['unpaid', 'paid'],
+    default: 'unpaid',
+  })
+  paymentStatus: 'unpaid' | 'paid';
+
+  @Prop({
+    type: String,
+    enum: [
+      'pending',
+      'confirmed',
+      'preparing',
+      'delivering',
+      'cancelled',
+      'completed',
+    ],
     default: 'pending',
   })
-  status: 'pending' | 'paid' | 'processing' | 'completed' | 'cancelled';
+  tracking: string;
+
+  @Prop({
+    type: String,
+    enum: ['cod', 'bank'],
+  })
+  payment: 'cod' | 'bank';
 
   @Prop({ type: Types.ObjectId, ref: 'Payment', required: false })
   paymentId?: Types.ObjectId;
 
   @Prop({ type: String, default: '' })
   note?: string;
+
+  @Prop()
+  createdAt: Date;
+
+  @Prop()
+  updatedAt: Date;
+
+  @Prop()
+  isDeleted: boolean;
+
+  @Prop()
+  deletedAt: Date;
+
+  @Prop({ type: Object })
+  createdBy?: {
+    _id: mongoose.Schema.Types.ObjectId;
+    email: string;
+  };
+
+  @Prop({ type: Object })
+  updatedBy?: {
+    _id: mongoose.Schema.Types.ObjectId;
+    email: string;
+  };
+
+  @Prop({ type: Object })
+  deletedBy?: {
+    _id: mongoose.Schema.Types.ObjectId;
+    email: string;
+  };
 }
 
 export const PreOrderSchema = SchemaFactory.createForClass(PreOrder);

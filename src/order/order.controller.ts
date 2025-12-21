@@ -80,10 +80,18 @@ export class OrderController {
   @Post('/status-changed')
   @ResponseMessage('Change status')
   changedStatus(
-    @Body('tableNumber') tableNumber: string,
+    @Body('dataSet') dataSet: { tableNumber?: string; customerName?: string },
     @Body('orderId') orderId: string,
     @Body('status') status: string,
+    @Body('keyRedis') keyRedis: string,
+    @Body('batchId') batchId?: string,
   ) {
-    return this.orderService.changedStatus(tableNumber, orderId, status);
+    return this.orderService.changedStatus(
+      dataSet,
+      orderId,
+      status,
+      keyRedis,
+      batchId,
+    );
   }
 }

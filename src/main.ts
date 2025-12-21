@@ -17,11 +17,7 @@ async function bootstrap() {
   app.useGlobalInterceptors(new TransformInterceptor(reflector));
 
   app.enableCors({
-    origin: [
-      'http://localhost:3000',
-      'http://192.168.1.5:3000',
-      'http://localhost:5173',
-    ],
+    origin: ['http://localhost:3000', 'http://192.168.1.3:3000'],
     methods: 'GET,HEAD,PUT,PATCH,POST,DELETE',
     preflightContinue: false,
     credentials: true,

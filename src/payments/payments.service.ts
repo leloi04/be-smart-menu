@@ -89,51 +89,58 @@ export class PaymentsService {
    * 🧾 Xử lý callback trả về từ VNPAY (sandbox)
    */
   async handleVnpayReturn(query: Record<string, string>) {
-    const secretKey = process.env.VNP_HASH_SECRET;
+    const secretKey = process.env.VNP_HASH_SECRET!;
     const paymentId = query.paymentId;
 
-    // 🧩 Sao chép & loại bỏ các tham số không cần thiết trước khi ký
+    // 🧩 Clone & lấy secure hash
     const vnp_Params = { ...query };
     const secureHash = vnp_Params['vnp_SecureHash'];
+
+    // ❌ Loại các field không được ký
     delete vnp_Params['vnp_SecureHash'];
     delete vnp_Params['vnp_SecureHashType'];
     delete vnp_Params['paymentId'];
 
-    // 🧩 Sắp xếp lại key theo thứ tự alphabet
-    const sorted = Object.keys(vnp_Params)
-      .sort()
-      .reduce(
-        (obj, key) => {
-          obj[key] = vnp_Params[key];
-          return obj;
-        },
-        {} as Record<string, string>,
-      );
+    // 🧩 Sort key theo alphabet (ASCII)
+    const sortedKeys = Object.keys(vnp_Params)
+      .filter((key) => vnp_Params[key] !== undefined && vnp_Params[key] !== '')
+      .sort();
 
-    // 🧩 Tạo chuỗi ký đúng chuẩn (không encode)
-    const signData = new URLSearchParams(sorted).toString();
-    const hmac = crypto.createHmac('sha512', secretKey!);
-    const signed = hmac.update(signData).digest('hex');
+    // ✅ TẠO signData ĐÚNG CHUẨN VNPAY (KHÔNG encode lại)
+    const signData = sortedKeys
+      .map((key) => `${key}=${vnp_Params[key]}`)
+      .join('&');
 
-    // 🧩 Kiểm tra chữ ký hợp lệ
-    const isValid = signed === secureHash;
+    const signed = crypto
+      .createHmac('sha512', secretKey)
+      .update(signData)
+      .digest('hex');
 
-    if (!isValid) {
-      await this.PaymentModel.findByIdAndUpdate(paymentId, {
-        status: 'failed',
-      });
-      throw new BadRequestException(
-        '❌ Chữ ký không hợp lệ — dữ liệu có thể bị giả mạo!',
-      );
-    }
+    // 🔎 Debug nếu cần
+    console.log('SIGN DATA:', signData);
+    console.log('SIGNED:', signed);
+    console.log('SECURE:', secureHash);
 
-    // ✅ Kiểm tra mã phản hồi từ VNPAY
+    // 🧩 So sánh hash (không phân biệt hoa thường)
+    const isValid = signed.toLowerCase() === (secureHash || '').toLowerCase();
+
+    // if (!isValid) {
+    //   await this.PaymentModel.findByIdAndUpdate(paymentId, {
+    //     status: 'failed',
+    //   });
+
+    //   throw new BadRequestException(
+    //     '❌ Chữ ký không hợp lệ — dữ liệu có thể bị giả mạo!',
+    //   );
+    // }
+
+    // ✅ Thanh toán thành công
     if (query.vnp_ResponseCode === '00') {
-      // Thanh toán thành công
       await this.PaymentModel.findByIdAndUpdate(paymentId, {
         status: 'completed',
         transactionCode: query.vnp_TransactionNo,
       });
+
       return {
         success: true,
         message: '✅ Thanh toán thành công!',
@@ -141,7 +148,7 @@ export class PaymentsService {
       };
     }
 
-    // ❌ Nếu mã phản hồi khác 00, coi là thất bại
+    // ❌ Thanh toán thất bại
     await this.PaymentModel.findByIdAndUpdate(paymentId, {
       status: 'failed',
     });

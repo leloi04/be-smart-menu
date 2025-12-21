@@ -129,6 +129,23 @@ export class OrderService {
       .lean();
   }
 
+  // update OrderItems of order
+  async updateOrderItems(id: string, orderItems: any, priceOrder: any) {
+    const order = (await this.OrderModel.findById(id)) as any;
+    const totalPrice = order.totalPrice;
+    const totalPriceUpdate = totalPrice + priceOrder;
+    const orderItemsCurrent = order.orderItems;
+    const orderItemsUpdate = [...orderItemsCurrent, ...orderItems];
+    return this.OrderModel.findByIdAndUpdate(
+      id,
+      {
+        orderItems: orderItemsUpdate,
+        totalPrice: totalPriceUpdate,
+      },
+      { new: true },
+    );
+  }
+
   // 🔁 Cập nhật status order theo bàn
   async updateStatusByTable(tableId: string, update: any) {
     const updatedOrder = await this.OrderModel.findOneAndUpdate(
@@ -194,49 +211,153 @@ export class OrderService {
     return order;
   }
 
-  async changedStatus(tableNumber: string, orderId: string, status: string) {
-    switch (status) {
-      case 'draft':
-        await this.redis.del(`first_order_${tableNumber}`);
-        this.orderGateway.server
-          .to(`table_${tableNumber}`)
-          .emit('firstOrder', { orderItems: [], totalPrice: 0 });
-        await this.OrderModel.findByIdAndUpdate(
-          orderId,
-          {
-            totalPrice: 0,
-            orderItems: [],
-            progressStatus: status,
-          },
-          { new: true },
-        );
-        break;
-      case 'pending_confirmation':
-        break;
-      case 'processing':
-        const order = await this.redis.get(`first_order_${tableNumber}`);
-        if (!order) {
-          throw new NotFoundException('Order not found in Redis');
-        }
-        const totalItems = order.orderItems.length || 0;
-        await this.orderGateway.processOrderItems(
-          order.orderItems,
-          tableNumber,
-          `first_order_${tableNumber}`,
-        );
-        await this.OrderModel.findByIdAndUpdate(
-          orderId,
-          { progressStatus: status },
-          { new: true },
-        );
-        await this.orderGateway.handleDataTable(tableNumber, totalItems, []);
-        break;
-      case 'completed':
-        break;
-      default:
-        throw new BadRequestException('Invalid status value');
+  async completedOrder(tableNumber: any) {
+    const table = await this.TableModel.findOne({ tableNumber });
+    if (table) {
+      await this.OrderModel.findByIdAndUpdate(
+        table.currentOrder,
+        { progressStatus: 'completed' },
+        { new: true },
+      );
+    }
+  }
+
+  async changedStatus(
+    dataSet: { tableNumber?: string; customerName?: string },
+    orderId: string,
+    status: string,
+    keyRedis: string,
+    batchId?: string,
+  ) {
+    const { customerName, tableNumber } = dataSet;
+    if (tableNumber) {
+      switch (status) {
+        case 'draft':
+          await this.redis.del(keyRedis);
+          this.orderGateway.server
+            .to(`table_${tableNumber}`)
+            .emit('firstOrder', { orderItems: [], totalPrice: 0 });
+          await this.OrderModel.findByIdAndUpdate(
+            orderId,
+            {
+              totalPrice: 0,
+              orderItems: [],
+              progressStatus: status,
+            },
+            { new: true },
+          );
+          await this.orderGateway.emitOrderStatusChanged(tableNumber, status);
+
+          break;
+        case 'only-processing':
+          await this.OrderModel.findByIdAndUpdate(
+            orderId,
+            {
+              progressStatus: 'processing',
+            },
+            { new: true },
+          );
+          await this.orderGateway.emitOrderStatusChanged(
+            tableNumber,
+            'processing',
+          );
+          break;
+        case 'pending_confirmation':
+          await this.OrderModel.findByIdAndUpdate(
+            orderId,
+            {
+              progressStatus: 'pending_confirmation',
+            },
+            { new: true },
+          );
+          break;
+        case 'processing':
+          if (batchId) {
+            const order = (await this.redis.get(keyRedis)).find(
+              (i) => batchId === i.batchId,
+            );
+            if (!order) {
+              throw new NotFoundException('Order not found in Redis');
+            }
+            const totalItems = order.orderItems.length || 0;
+            await this.orderGateway.processOrderItems({
+              orderItems: order.orderItems,
+              tableNumber,
+              dataKey: keyRedis,
+              batchId,
+            });
+            await this.OrderModel.findByIdAndUpdate(
+              orderId,
+              { progressStatus: status },
+              { new: true },
+            );
+            await this.orderGateway.handleDataTable(
+              tableNumber,
+              totalItems,
+              [],
+            );
+          } else {
+            const order = await this.redis.get(keyRedis);
+            if (!order) {
+              throw new NotFoundException('Order not found in Redis');
+            }
+            const totalItems = order.orderItems.length || 0;
+            await this.orderGateway.processOrderItems({
+              orderItems: order.orderItems,
+              tableNumber,
+              dataKey: keyRedis,
+            });
+            await this.OrderModel.findByIdAndUpdate(
+              orderId,
+              { progressStatus: status },
+              { new: true },
+            );
+            await this.orderGateway.handleDataTable(
+              tableNumber,
+              totalItems,
+              [],
+            );
+          }
+          await this.orderGateway.emitOrderStatusChanged(tableNumber, status);
+
+          break;
+        case 'completed':
+          break;
+        default:
+          throw new BadRequestException('Invalid status value');
+      }
     }
 
-    await this.orderGateway.emitOrderStatusChanged(tableNumber, status);
+    if (customerName) {
+      switch (status) {
+        case 'draft':
+          break;
+        case 'pending_confirmation':
+          break;
+        case 'processing':
+          const order = await this.redis.get(keyRedis);
+          if (!order) {
+            throw new NotFoundException('Order not found in Redis');
+          }
+          const totalItems = order.orderItems.length || 0;
+          await this.orderGateway.processOrderItems({
+            orderItems: order.orderItems,
+            customerName,
+            dataKey: keyRedis,
+          });
+          await this.orderGateway.handleDataOnline(
+            orderId,
+            customerName,
+            totalItems,
+            order.orderItems,
+            [],
+          );
+          break;
+        case 'completed':
+          break;
+        default:
+          throw new BadRequestException('Invalid status value');
+      }
+    }
   }
 }
