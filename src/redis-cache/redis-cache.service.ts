@@ -1,37 +1,56 @@
 // src/redis-cache/redis-cache.service.ts
-import { Injectable, OnModuleInit, OnModuleDestroy } from '@nestjs/common';
+import {
+  Injectable,
+  OnModuleInit,
+  OnModuleDestroy,
+  Logger,
+} from '@nestjs/common';
 import Redis from 'ioredis';
 
 @Injectable()
 export class RedisService implements OnModuleInit, OnModuleDestroy {
   private client: Redis;
+  private readonly logger = new Logger(RedisService.name);
 
   onModuleInit() {
-    const host = process.env.REDIS_HOST || '127.0.0.1';
-    const port = Number(process.env.REDIS_PORT) || 6379;
-    const password = process.env.REDIS_PASSWORD;
+    /**
+     * 👉 Ưu tiên REDIS_URL (Render / Production)
+     * 👉 Fallback sang HOST + PORT (Local)
+     */
+    if (process.env.REDIS_URL) {
+      this.client = new Redis(process.env.REDIS_URL, {
+        retryStrategy: (times) => Math.min(times * 100, 2000),
+      });
 
-    this.client = new Redis({
-      host,
-      port,
-      password: password || undefined,
-      retryStrategy(times) {
-        return Math.min(times * 100, 2000);
-      },
-    });
+      this.logger.log(`Using REDIS_URL: ${process.env.REDIS_URL}`);
+    } else {
+      const host = process.env.REDIS_HOST || '127.0.0.1';
+      const port = Number(process.env.REDIS_PORT) || 6379;
+      const password = process.env.REDIS_PASSWORD;
+
+      this.client = new Redis({
+        host,
+        port,
+        password: password || undefined,
+        retryStrategy: (times) => Math.min(times * 100, 2000),
+      });
+
+      this.logger.log(`Using Redis host: ${host}:${port}`);
+    }
 
     this.client.on('connect', () => {
-      console.log('✅ Redis connected:', host + ':' + port);
+      this.logger.log('✅ Redis connected');
     });
 
     this.client.on('error', (err) => {
-      console.error('❌ Redis error:', err.message);
+      this.logger.error('❌ Redis error', err.message);
     });
   }
 
   onModuleDestroy() {
     if (this.client) {
       this.client.disconnect();
+      this.logger.log('🔌 Redis disconnected');
     }
   }
 
@@ -59,7 +78,6 @@ export class RedisService implements OnModuleInit, OnModuleDestroy {
   }
 
   async exists(key: string): Promise<boolean> {
-    const result = await this.client.exists(key);
-    return result === 1;
+    return (await this.client.exists(key)) === 1;
   }
 }
