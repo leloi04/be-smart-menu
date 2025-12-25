@@ -65,6 +65,20 @@ export class ReservationsController {
     return this.reservationsService.getPreBookedTable();
   }
 
+  @Post('pre-booked-table-upcoming')
+  @ResponseMessage('Fetch table in advance')
+  getPreBookedTableUpComing(
+    @Query('current') currentPage: string,
+    @Query('pageSize') limit: string,
+    @Query() qs: string,
+  ) {
+    return this.reservationsService.getPreBookedTableUpComing(
+      +currentPage,
+      +limit,
+      qs,
+    );
+  }
+
   @Post('check-in-table')
   @ResponseMessage('check in table in advance')
   checkInTable(@Body('reservationId') reservationId: string) {
@@ -75,5 +89,31 @@ export class ReservationsController {
   @ResponseMessage('cancel table in advance')
   cancelTableReservation(@Body('reservationId') reservationId: string) {
     return this.reservationsService.cancelTableReservation(reservationId);
+  }
+
+  @Public()
+  @Post('valid-reservation')
+  validateReservation(
+    @Body('date') date: string,
+    @Body('timeSlot') timeSlot: string,
+    @Body('tableId') tableId: string,
+  ) {
+    return this.reservationsService.validateReservation(
+      date,
+      timeSlot,
+      tableId,
+    );
+  }
+
+  @Post('data-in-status')
+  @ResponseMessage('Fetch reservation data in status')
+  fetchReservationDataInStatus(
+    @Body('status') status: string,
+    @Body('customerPhone') customerPhone: string,
+  ) {
+    return this.reservationsService.fetchReservationDataInStatus(
+      status,
+      customerPhone,
+    );
   }
 }

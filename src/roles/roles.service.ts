@@ -1,4 +1,9 @@
-import { BadRequestException, Injectable } from '@nestjs/common';
+import {
+  BadRequestException,
+  Injectable,
+  Logger,
+  OnModuleInit,
+} from '@nestjs/common';
 import { CreateRoleDto } from './dto/create-role.dto';
 import { UpdateRoleDto } from './dto/update-role.dto';
 import { InjectModel } from '@nestjs/mongoose';
@@ -6,12 +11,33 @@ import { Role, RoleDocument } from './Schemas/role.schema';
 import { SoftDeleteModel } from 'soft-delete-plugin-mongoose';
 import aqp from 'api-query-params';
 import { ADMIN_ROLE, IUser } from 'src/types/global.constanst';
+import { ROLE_SEED_DATA } from 'src/types/data.seed';
 
 @Injectable()
-export class RolesService {
+export class RolesService implements OnModuleInit {
+  private readonly logger = new Logger(RolesService.name);
   constructor(
     @InjectModel(Role.name) private RoleModel: SoftDeleteModel<RoleDocument>,
   ) {}
+
+  async onModuleInit() {
+    await this.seedRole();
+  }
+
+  async seedRole() {
+    const count = await this.RoleModel.countDocuments();
+
+    if (count > 0) {
+      this.logger.log('👤 role collection đã có dữ liệu → bỏ qua seed');
+      return;
+    }
+
+    this.logger.log('🌱 role collection trống → insertMany role');
+
+    await this.RoleModel.insertMany(ROLE_SEED_DATA);
+
+    this.logger.log('✅ Seed role thành công');
+  }
 
   async create(createRoleDto: CreateRoleDto, user: IUser) {
     const { name } = createRoleDto;

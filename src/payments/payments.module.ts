@@ -3,10 +3,20 @@ import { PaymentsService } from './payments.service';
 import { PaymentsController } from './payments.controller';
 import { MongooseModule } from '@nestjs/mongoose';
 import { Payment, PaymentSchema } from './schemas/payment.schema';
+import { OrderModule } from 'src/order/order.module';
+import { Order, OrderSchema } from 'src/order/schemas/order.schema';
+import { Table, TableSchema } from 'src/table/schemas/table.schema';
+import { TableModule } from 'src/table/table.module';
 
 @Module({
   imports: [
-    MongooseModule.forFeature([{ name: Payment.name, schema: PaymentSchema }]),
+    MongooseModule.forFeature([
+      { name: Payment.name, schema: PaymentSchema },
+      { name: Order.name, schema: OrderSchema },
+      { name: Table.name, schema: TableSchema },
+    ]),
+    OrderModule,
+    TableModule,
   ],
   controllers: [PaymentsController],
   providers: [PaymentsService],

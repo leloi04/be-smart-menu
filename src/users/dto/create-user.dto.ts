@@ -29,12 +29,12 @@ export class CreateUserDto {
   @IsOptional()
   gender?: string;
 
+  @IsOptional()
+  avatar?: string;
+
   @IsMongoId({ message: 'phần tử là objectId' })
   @IsOptional()
   role?: mongoose.Schema.Types.ObjectId;
-
-  @IsOptional()
-  avatar?: string;
 }
 
 export class RegisterUserDto {

@@ -94,4 +94,11 @@ export class OrderController {
       batchId,
     );
   }
+
+  @Public()
+  @Post('/handle-order-completed')
+  @ResponseMessage('Handle order completed')
+  async handleOrderCompleted(@Body('tableNumber') tableNumber: string) {
+    return this.orderService.orderPaymentCompleted(tableNumber);
+  }
 }

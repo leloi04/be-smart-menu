@@ -74,18 +74,38 @@ export class PreOrder {
   paymentStatus: 'unpaid' | 'paid';
 
   @Prop({
-    type: String,
-    enum: [
-      'pending',
-      'confirmed',
-      'preparing',
-      'delivering',
-      'cancelled',
-      'completed',
+    type: [
+      {
+        status: {
+          type: String,
+          enum: [
+            'pending',
+            'confirmed',
+            'preparing',
+            'ready',
+            'delivering',
+            'cancelled',
+            'completed',
+          ],
+          required: true,
+        },
+        timestamp: {
+          type: Date,
+          default: Date.now,
+        },
+      },
     ],
-    default: 'pending',
+    default: [
+      {
+        status: 'pending',
+        timestamp: new Date(),
+      },
+    ],
   })
-  tracking: string;
+  tracking: {
+    status: string;
+    timestamp: Date;
+  }[];
 
   @Prop({
     type: String,

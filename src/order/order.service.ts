@@ -222,6 +222,17 @@ export class OrderService {
     }
   }
 
+  async orderPaymentCompleted(tableNumber: string) {
+    const keyRedis = 'data_table';
+    const dataTable = await this.redis.get(keyRedis);
+    const tableData = dataTable.filter(
+      (item) => item.tableNumber !== tableNumber,
+    );
+    await this.redis.set(keyRedis, tableData);
+
+    this.orderGateway.server.to('staff_room').emit('dataTable', tableData);
+  }
+
   async changedStatus(
     dataSet: { tableNumber?: string; customerName?: string },
     orderId: string,
@@ -320,38 +331,6 @@ export class OrderService {
           }
           await this.orderGateway.emitOrderStatusChanged(tableNumber, status);
 
-          break;
-        case 'completed':
-          break;
-        default:
-          throw new BadRequestException('Invalid status value');
-      }
-    }
-
-    if (customerName) {
-      switch (status) {
-        case 'draft':
-          break;
-        case 'pending_confirmation':
-          break;
-        case 'processing':
-          const order = await this.redis.get(keyRedis);
-          if (!order) {
-            throw new NotFoundException('Order not found in Redis');
-          }
-          const totalItems = order.orderItems.length || 0;
-          await this.orderGateway.processOrderItems({
-            orderItems: order.orderItems,
-            customerName,
-            dataKey: keyRedis,
-          });
-          await this.orderGateway.handleDataOnline(
-            orderId,
-            customerName,
-            totalItems,
-            order.orderItems,
-            [],
-          );
           break;
         case 'completed':
           break;

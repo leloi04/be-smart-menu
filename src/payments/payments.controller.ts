@@ -61,4 +61,10 @@ export class PaymentsController {
   async vnpayReturn(@Query() query: any) {
     return this.paymentsService.handleVnpayReturn(query);
   }
+
+  @Public()
+  @Post('handle-payment-success')
+  async handlePaymentSuccess(@Body('id') id: string) {
+    return this.paymentsService.handlePaymentSuccess(id);
+  }
 }

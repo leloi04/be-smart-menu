@@ -57,4 +57,28 @@ export class PreOrderController {
   remove(@Param('id') id: string, @User() user: IUser) {
     return this.preOrderService.remove(id, user);
   }
+
+  @Post('delivery')
+  @ResponseMessage('Handle pre-order delivery')
+  fetchPreOrderDelivery() {
+    return this.preOrderService.fetchPreOrderDelivery();
+  }
+
+  @Post('uncompleted')
+  @ResponseMessage('Fetch uncompleted pre-order ')
+  fetchPreOrderUncompleted(@User() user: IUser) {
+    return this.preOrderService.fetchPreOrderUncompleted(user);
+  }
+
+  @Post('completed')
+  @ResponseMessage('Fetch completed pre-order ')
+  fetchPreOrderCompleted(@User() user: IUser) {
+    return this.preOrderService.fetchPreOrderCompleted(user);
+  }
+
+  @Post('completed-pre-order')
+  @ResponseMessage('completed pre-order ')
+  completePreOrder(@Body('id') id: string) {
+    return this.preOrderService.completePreOrder(id);
+  }
 }

@@ -9,6 +9,8 @@ import { Server, Socket } from 'socket.io';
 import { forwardRef, Inject } from '@nestjs/common';
 import { OrderService } from './order.service';
 import { RedisService } from 'src/redis-cache/redis-cache.service';
+import { PreOrderService } from 'src/pre-order/pre-order.service';
+import { PRE_ORDER_STATUS } from 'src/types/global.constanst';
 
 @WebSocketGateway({
   cors: {
@@ -23,6 +25,7 @@ export class OrderGateway {
     @Inject(forwardRef(() => OrderService))
     private readonly orderService: OrderService,
     private readonly redis: RedisService,
+    private readonly preOrderService: PreOrderService,
   ) {}
 
   // 🔧 HÀM LỌC QUANTITY > 0
@@ -314,7 +317,7 @@ export class OrderGateway {
     });
   }
 
-  @SubscribeMessage('handleConfirmNotify')
+  @SubscribeMessage('handleConfirmNotifyTable')
   async handleConfirmNotify(
     @MessageBody()
     dataConfirm: {
@@ -343,29 +346,22 @@ export class OrderGateway {
 
     await this.redis.set(key, confirmData);
 
-    if (key === 'notification_table_order') {
-      this.server
-        .to('staff_room')
-        .emit('staffTableNotificationSync', confirmData);
-    } else {
-      this.server
-        .to('staff_room')
-        .emit('staffPreOrderNotificationSync', confirmData);
-    }
+    this.server
+      .to('staff_room')
+      .emit('staffTableNotificationSync', confirmData);
   }
 
-  @SubscribeMessage('handleCancelNotify')
+  @SubscribeMessage('handleCancelNotifyTable')
   async handleCancelNotify(
     @MessageBody()
     dataCancel: {
       id: string;
       key: string;
       batchId?: string;
-      customerName?: string;
       keyTb: string;
     },
   ) {
-    const { id, key, batchId, customerName, keyTb } = dataCancel;
+    const { id, key, batchId, keyTb } = dataCancel;
 
     if (batchId) {
       const dataKey = await this.redis.get(key);
@@ -382,15 +378,7 @@ export class OrderGateway {
 
     await this.redis.set(keyTb, cancelData);
 
-    if (keyTb === 'notification_table_order') {
-      this.server
-        .to('staff_room')
-        .emit('staffTableNotificationSync', cancelData);
-    } else {
-      this.server
-        .to('staff_room')
-        .emit('staffPreOrderNotificationSync', cancelData);
-    }
+    this.server.to('staff_room').emit('staffTableNotificationSync', cancelData);
   }
 
   @SubscribeMessage('emitGetDataInKeyRedis')
@@ -555,7 +543,14 @@ export class OrderGateway {
 
   @SubscribeMessage('handleCompletedItem')
   async handleCompletedItem(@MessageBody() data: any) {
-    const { kitchenArea, tableNumber, batchId, dataKey, menuItemId } = data;
+    const {
+      kitchenArea,
+      tableNumber,
+      batchId,
+      dataKey,
+      menuItemId,
+      customerName,
+    } = data;
     const dataTableKey = 'data_table';
     const dataPreOrderKey = 'data_pre-order';
     if (tableNumber) {
@@ -755,6 +750,92 @@ export class OrderGateway {
         this.emitOrderStatusChanged(tableNumber, 'completed');
         await this.orderService.completedOrder(tableNumber);
       }
+    } else if (customerName) {
+      const preOrderId = dataKey.slice(dataKey.indexOf(':') + 1);
+
+      const dataPreOrders = (await this.redis.get(dataPreOrderKey)) || [];
+
+      const currentPreOrder = dataPreOrders.find((i) => i.id === preOrderId);
+
+      if (!currentPreOrder) return;
+
+      const dataOrderInKey = currentPreOrder.orderItems;
+
+      //Item completed
+      const item = dataOrderInKey.find((i) => i.menuItemId === menuItemId);
+
+      // Items còn lại
+      const itemsDf = dataOrderInKey.filter((i) => i.menuItemId !== menuItemId);
+
+      // Replace pre-order
+      const dataReplace = {
+        ...currentPreOrder,
+        orderItems: itemsDf,
+        orderItemsCompleted: [
+          ...currentPreOrder.orderItemsCompleted,
+          { ...item, timestamp: new Date().toISOString() },
+        ],
+      };
+
+      const dataDf = dataPreOrders.filter((i) => i.id !== preOrderId);
+
+      const dataSetInRedis = [dataReplace, ...dataDf];
+
+      const lengthItemsCompleted = dataReplace.orderItemsCompleted.length || 0;
+      const totalItems = dataReplace.totalItems || 0;
+
+      if (lengthItemsCompleted === totalItems) {
+        const keyTracking = `pre-order:tracking:${preOrderId}`;
+        const readyTracking = {
+          status: PRE_ORDER_STATUS.READY,
+          timestamp: new Date(),
+        };
+        await this.preOrderService.pushTracking(preOrderId, readyTracking);
+        const tracking = await this.redis.get(keyTracking);
+        const trackingUpdate = [...tracking.tracking, readyTracking];
+        await this.redis.set(keyTracking, { tracking: trackingUpdate }, 86400);
+
+        const deliveryKey = 'notification_pre-order_delivery';
+        const dataDeliveryNotifications =
+          (await this.redis.get(deliveryKey)) || [];
+        const dataPreOrder = await this.preOrderService.findOne(preOrderId);
+        const dataCustomer = dataPreOrder?.customerId as any;
+        const newDeliveryNotification = {
+          id: preOrderId,
+          customerName: dataCustomer?.name,
+          phone: dataCustomer?.phone,
+          orderItems: dataPreOrder?.orderItems,
+          totalPayment: dataPreOrder?.totalPayment,
+          deliveryAddress: dataPreOrder?.deliveryAddress,
+          timestamp: new Date().toISOString(),
+          note: dataPreOrder?.note || '',
+        };
+        await this.redis.set(deliveryKey, [
+          ...dataDeliveryNotifications,
+          newDeliveryNotification,
+        ]);
+      }
+
+      await this.server.to('staff_room').emit('dataPreOrder', dataSetInRedis);
+
+      await this.redis.set(dataPreOrderKey, dataSetInRedis);
+
+      // Xóa item khỏi chef
+      const dataOrderInChef = await this.redis.get(`${kitchenArea}_chef`);
+
+      const itemsDfInChef = dataOrderInChef.filter(
+        (i) =>
+          i.menuItemId !== menuItemId ||
+          i.dataKey !== dataKey ||
+          i.batchId !== batchId,
+      );
+
+      await this.redis.set(`${kitchenArea}_chef`, itemsDfInChef);
+
+      this.server.to(`${kitchenArea}_room`).emit('currentOrderItems', {
+        area: kitchenArea,
+        items: itemsDfInChef,
+      });
     }
   }
 

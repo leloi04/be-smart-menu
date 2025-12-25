@@ -101,6 +101,46 @@ export class ReservationsService implements OnModuleInit {
     return result;
   }
 
+  /** � Lấy tất cả đặt bàn có trạng thái 'upcoming' với phân trang */
+  async getPreBookedTableUpComing(
+    currentPage: number,
+    limit: number,
+    qs: string,
+  ) {
+    const { filter, sort, projection, population } = aqp(qs);
+    delete filter.current;
+    delete filter.pageSize;
+
+    const offset = (currentPage - 1) * +limit;
+    const defaultLimit = limit ? limit : 10;
+
+    const finalFilter = {
+      ...filter,
+      status: 'upcoming',
+    };
+
+    const totalItems = (await this.ReservationModel.find(finalFilter)).length;
+    const totalPages = Math.ceil(totalItems / defaultLimit);
+
+    const result = await this.ReservationModel.find(finalFilter)
+      .skip(offset)
+      .limit(defaultLimit)
+      // @ts-ignore
+      .sort(sort as any)
+      .populate(population)
+      .exec();
+
+    return {
+      meta: {
+        current: currentPage,
+        pageSize: limit,
+        pages: totalPages,
+        total: totalItems,
+      },
+      result,
+    };
+  }
+
   async checkInTable(reservationId: string) {
     return await this.ReservationModel.findByIdAndUpdate(reservationId, {
       status: 'checked_in',
@@ -150,5 +190,37 @@ export class ReservationsService implements OnModuleInit {
       },
     );
     return await this.ReservationModel.softDelete({ _id: id });
+  }
+
+  async fetchReservationDataInStatus(status: string, customerPhone: string) {
+    let result: any;
+    if (status == 'upcoming') {
+      result = await this.ReservationModel.find({
+        status: status,
+        customerPhone: customerPhone,
+      });
+    } else if (status == 'checked_in') {
+      result = await this.ReservationModel.find({
+        status: status,
+        customerPhone: customerPhone,
+      });
+    } else if (status == 'cancelled-expired') {
+      result = await this.ReservationModel.find({
+        status: { $in: ['cancelled', 'expired'] },
+        customerPhone: customerPhone,
+      });
+    }
+
+    return result;
+  }
+
+  async validateReservation(date: string, timeSlot: string, tableId: string) {
+    const existingReservations = await this.ReservationModel.findOne({
+      date,
+      timeSlot,
+      tableId,
+      status: 'upcoming',
+    });
+    return existingReservations ? 'yes' : 'no';
   }
 }

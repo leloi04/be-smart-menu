@@ -1,4 +1,9 @@
-import { BadRequestException, Injectable } from '@nestjs/common';
+import {
+  BadRequestException,
+  Injectable,
+  Logger,
+  OnModuleInit,
+} from '@nestjs/common';
 import { CreateUserDto, RegisterUserDto } from './dto/create-user.dto';
 import { UpdateUserDto, UpdateUserPassword } from './dto/update-user.dto';
 import { SoftDeleteModel } from 'soft-delete-plugin-mongoose';
@@ -13,9 +18,11 @@ import {
   IUser,
 } from 'src/types/global.constanst';
 import mongoose from 'mongoose';
+import { ACCOUNT_SEED_DATA } from 'src/types/data.seed';
 
 @Injectable()
-export class UsersService {
+export class UsersService implements OnModuleInit {
+  private readonly logger = new Logger(UsersService.name);
   constructor(
     @InjectModel(User.name)
     private UserModel: SoftDeleteModel<UserDocument>,
@@ -23,6 +30,25 @@ export class UsersService {
     @InjectModel(Role.name)
     private RoleModel: SoftDeleteModel<RoleDocument>,
   ) {}
+
+  async onModuleInit() {
+    await this.seedUser();
+  }
+
+  async seedUser() {
+    const count = await this.UserModel.countDocuments();
+
+    if (count > 0) {
+      this.logger.log('👤 User collection đã có dữ liệu → bỏ qua seed');
+      return;
+    }
+
+    this.logger.log('🌱 User collection trống → insertMany user');
+
+    await this.UserModel.insertMany(ACCOUNT_SEED_DATA);
+
+    this.logger.log('✅ Seed user thành công');
+  }
 
   async create(createUserDto: CreateUserDto, user: IUser) {
     const { email, role } = createUserDto;

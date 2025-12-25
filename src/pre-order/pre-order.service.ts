@@ -38,7 +38,6 @@ export class PreOrderService {
       '_id',
     ]);
     const newPreOrder = await this.PreOrderModel.create({
-      tracking: 'pending',
       ...createPreOrderDto,
       createdBy: {
         _id: user._id,
@@ -88,7 +87,10 @@ export class PreOrderService {
   }
 
   async findOne(id: string) {
-    return await this.PreOrderModel.findById(id);
+    return await this.PreOrderModel.findById(id).populate({
+      path: 'customerId',
+      select: 'name email phone _id',
+    });
   }
 
   async update(id: string, updatePreOrderDto: UpdatePreOrderDto, user: IUser) {
@@ -115,5 +117,83 @@ export class PreOrderService {
       },
     );
     return await this.PreOrderModel.softDelete({ _id: id });
+  }
+
+  async pushTracking(orderId: string, tracking: any) {
+    return this.PreOrderModel.updateOne(
+      { _id: orderId },
+      {
+        $push: { tracking },
+      },
+    );
+  }
+
+  async fetchPreOrderDelivery() {
+    const data = await this.PreOrderModel.find({
+      deliveryAddress: { $ne: null },
+      tracking: {
+        $elemMatch: {
+          status: 'ready',
+        },
+      },
+    }).populate({ path: 'customerId', select: 'name email phone _id' });
+
+    const dataDelivery = data.map((item) => {
+      const dataCustomer = item.customerId as any;
+      return {
+        id: item._id,
+        customerName: dataCustomer?.name,
+        phone: dataCustomer?.phone,
+        orderItems: item.orderItems,
+        totalPayment: item.totalPayment,
+        deliveryAddress: item.deliveryAddress,
+        timestamp: item.tracking.find((t) => t.status === 'ready')?.timestamp,
+        note: item.note || '',
+      };
+    });
+
+    return dataDelivery;
+  }
+
+  async fetchPreOrderUncompleted(user: IUser) {
+    const data = await this.PreOrderModel.aggregate([
+      {
+        $match: {
+          customerId: user._id,
+        },
+      },
+      {
+        $match: {
+          $expr: {
+            $not: {
+              $in: [
+                { $arrayElemAt: ['$tracking.status', -1] },
+                ['completed', 'cancelled'],
+              ],
+            },
+          },
+        },
+      },
+      {
+        $sort: { createdAt: -1 },
+      },
+    ]);
+
+    return data;
+  }
+
+  async fetchPreOrderCompleted(user: IUser) {
+    const data = await this.PreOrderModel.find({
+      customerId: user._id,
+      tracking: {
+        $elemMatch: { status: 'completed' },
+      },
+    });
+
+    return data;
+  }
+
+  async completePreOrder(id: string) {
+    await this.preOrderGateway.handleCompletePreOrder(id);
   }
 }

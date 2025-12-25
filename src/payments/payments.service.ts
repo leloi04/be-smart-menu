@@ -6,12 +6,20 @@ import { Payment, PaymentDocument } from './schemas/payment.schema';
 import { SoftDeleteModel } from 'soft-delete-plugin-mongoose';
 import * as crypto from 'crypto';
 import * as qs from 'qs';
+import { Order, OrderDocument } from 'src/order/schemas/order.schema';
+import { Table, TableDocument } from 'src/table/schemas/table.schema';
+import { OrderService } from 'src/order/order.service';
 
 @Injectable()
 export class PaymentsService {
   constructor(
     @InjectModel(Payment.name)
     private PaymentModel: SoftDeleteModel<PaymentDocument>,
+    @InjectModel(Order.name)
+    private OrderModel: SoftDeleteModel<OrderDocument>,
+    @InjectModel(Table.name)
+    private TableModel: SoftDeleteModel<TableDocument>,
+    private readonly orderService: OrderService,
   ) {}
 
   create(createPaymentDto: CreatePaymentDto) {
@@ -185,5 +193,34 @@ export class PaymentsService {
    */
   async getPaymentByOrder(orderId: string) {
     return this.PaymentModel.find({ orderId }).sort({ createdAt: -1 });
+  }
+
+  async handlePaymentSuccess(id: string) {
+    const payment = await this.PaymentModel.findById(id);
+    if (!payment) {
+      throw new BadRequestException('Payment not found');
+    }
+    const order = await this.OrderModel.findById(payment.orderId);
+    if (!order) {
+      throw new BadRequestException('Order not found');
+    }
+    await this.OrderModel.findByIdAndUpdate(order._id, {
+      paymentStatus: 'paid',
+    });
+    const table = await this.TableModel.findById(order.tableId);
+    if (!table) {
+      throw new BadRequestException('Table not found');
+    }
+    await this.TableModel.findByIdAndUpdate(table._id, {
+      status: 'cleaning',
+      currentOrder: null,
+    });
+    const tableNumber = table.tableNumber;
+    await this.orderService.orderPaymentCompleted(tableNumber);
+
+    return {
+      success: true,
+      message: 'Payment handled successfully',
+    };
   }
 }

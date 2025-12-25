@@ -5,6 +5,7 @@ export interface IUser {
   role: string;
   phone: number | string;
   avatar?: string;
+  gender?: string;
 }
 
 export const ADMIN_ROLE = 'ADMIN';
@@ -16,3 +17,13 @@ export const ADMIN_ROLE_ID = '68ff89882a40850599748ac9';
 export const CUSTOMER_ROLE_ID = '68ff81d5d8fdcfb7071a9185';
 export const STAFF_ROLE_ID = '68ff8bff99dfd088f2baeccd';
 export const CHEF_ROLE_ID = '68ff8c1499dfd088f2baecd0';
+
+export enum PRE_ORDER_STATUS {
+  PENDING = 'pending',
+  CONFIRMED = 'confirmed',
+  PREPARING = 'preparing',
+  READY = 'ready',
+  DELIVERING = 'delivering',
+  CANCELLED = 'cancelled',
+  COMPLETED = 'completed',
+}
