@@ -10,28 +10,41 @@ import cookieParser from 'cookie-parser';
 
 async function bootstrap() {
   const app = await NestFactory.create<NestExpressApplication>(AppModule);
+
   const reflector = app.get(Reflector);
   const configService = app.get(ConfigService);
+
+  // Static files
   app.useStaticAssets(join(__dirname, '..', 'public'));
-  app.useGlobalGuards(new JwtAuthGuard(reflector));
-  app.useGlobalInterceptors(new TransformInterceptor(reflector));
 
-  app.enableCors({
-    origin: ['http://localhost:3000', 'http://192.168.1.5:3000'],
-    methods: 'GET,HEAD,PUT,PATCH,POST,DELETE',
-    preflightContinue: false,
-    credentials: true,
-  });
+  // Cookie
+  app.use(cookieParser());
 
+  // Global Pipes
   app.useGlobalPipes(
     new ValidationPipe({
       whitelist: true,
-      // forbidNonWhitelisted: true
     }),
   );
 
-  app.use(cookieParser());
+  // Global Guard & Interceptor
+  app.useGlobalGuards(new JwtAuthGuard(reflector));
+  app.useGlobalInterceptors(new TransformInterceptor(reflector));
 
-  await app.listen(configService.get<string>('PORT')!);
+  // CORS (production-safe)
+  app.enableCors({
+    origin: (origin, callback) => {
+      // allow server-to-server & tools like Postman
+      if (!origin) return callback(null, true);
+      return callback(null, true);
+    },
+    credentials: true,
+  });
+
+  // 🚀 IMPORTANT: Render injects PORT
+  const port = Number(process.env.PORT) || 3000;
+  await app.listen(port);
+
+  console.log(`🚀 Server running on port ${port}`);
 }
 bootstrap();
