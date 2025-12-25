@@ -14,13 +14,22 @@ import {
   imports: [
     BullModule.forRoot({
       connection: {
-        host: '127.0.0.1',
-        port: 6379,
+        // ✅ Ưu tiên REDIS_URL (Render / Production)
+        ...(process.env.REDIS_URL
+          ? { url: process.env.REDIS_URL }
+          : {
+              // ✅ Local fallback
+              host: process.env.REDIS_HOST || '127.0.0.1',
+              port: Number(process.env.REDIS_PORT) || 6379,
+              password: process.env.REDIS_PASSWORD || undefined,
+            }),
       },
     }),
+
     BullModule.registerQueue({
       name: QUEUE_NAMES.RESERVATION,
     }),
+
     MongooseModule.forFeature([
       { name: Reservation.name, schema: ReservationSchema },
     ]),
