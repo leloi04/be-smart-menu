@@ -62,7 +62,6 @@ export class MenuController {
     return this.menuService.remove(id, user);
   }
 
-  // Cập nhật trạng thái món ăn (available / out_of_stock)
   @Patch(':id/status')
   @ResponseMessage('Update status menu item')
   async updateStatus(
@@ -70,7 +69,7 @@ export class MenuController {
     @Body('status') status: 'available' | 'out_of_stock',
   ) {
     const updatedItem = await this.menuService.updateStatus(id, status);
-    this.menuGateway.emitMenuUpdate(updatedItem); // 🔥 Phát realtime
+    this.menuGateway.emitMenuUpdate(updatedItem);
     return { success: true, updatedItem };
   }
 

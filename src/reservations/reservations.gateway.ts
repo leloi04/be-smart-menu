@@ -148,19 +148,6 @@ export class ReservationsGateway {
     return result;
   }
 
-  /** ❌ Khi có người hủy hoặc xóa đặt bàn */
-  @SubscribeMessage('removeReservation')
-  async handleRemoveReservation(
-    @MessageBody() data: { id: string; user: IUser },
-  ) {
-    await this.reservationsService.remove(data.id, data.user);
-
-    // Phát sự kiện realtime
-    this.server.emit('reservationRemoved', { _id: data.id });
-
-    this.logger.log(`🗑️ Reservation ${data.id} removed by ${data.user.email}`);
-  }
-
   /** 🕒 Khi trạng thái được cập nhật tự động từ Bull Queue */
   async notifyStatusChange(reservationId: string, newStatus: string) {
     this.server.emit('reservationStatusChanged', {
@@ -168,5 +155,13 @@ export class ReservationsGateway {
       status: newStatus,
     });
     this.logger.debug(`🔄 Realtime: ${reservationId} → ${newStatus}`);
+  }
+
+  async handleCancelReservation(id: string, key: string) {
+    const dataKey = (await this.redis.get(key)) || [];
+    const dataUpdate = dataKey.filter((d) => d.tableId !== id);
+    await this.redis.set(key, dataUpdate);
+
+    this.server.emit('bookingCurrentState', dataUpdate);
   }
 }

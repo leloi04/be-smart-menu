@@ -101,4 +101,10 @@ export class OrderController {
   async handleOrderCompleted(@Body('tableNumber') tableNumber: string) {
     return this.orderService.orderPaymentCompleted(tableNumber);
   }
+
+  @Post('/summary')
+  @ResponseMessage('Summary order for dashboard')
+  async summaryOrder(@Body('month') month: string, @Body('year') year: string) {
+    return this.orderService.summaryOrder(month, year);
+  }
 }

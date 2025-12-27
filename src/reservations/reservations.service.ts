@@ -148,7 +148,23 @@ export class ReservationsService implements OnModuleInit {
     });
   }
 
-  async cancelTableReservation(reservationId: string) {
+  async cancelTableReservation(
+    reservationId: string,
+    date: string,
+    timeSlot: string,
+  ) {
+    const reservationData = await this.ReservationModel.findById(reservationId);
+    if (!reservationData) {
+      throw new BadRequestException('Không có dữ liệu qua id bạn gửi!');
+    }
+
+    const keyRedis = `booking:${date}:${timeSlot}`;
+    const idTable = reservationData.tableId;
+    await this.reservationsGateway.handleCancelReservation(
+      idTable.toString(),
+      keyRedis,
+    );
+
     return await this.ReservationModel.findByIdAndUpdate(reservationId, {
       status: 'cancelled',
       cancelledAt: new Date(),

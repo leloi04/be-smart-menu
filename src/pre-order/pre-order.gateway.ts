@@ -79,14 +79,10 @@ export class PreOrderGateway {
     this.server.to('staff_room').emit('newOrderPreOrder', newOrderNotification);
   }
 
-  // 🔔 Khi khách hủy đơn
+  // 🔔 Khi khách/nhân viên hủy đơn
   @SubscribeMessage('cancelPreOrder')
-  async handleCancelPreOrder(
-    @MessageBody() data: { orderId: string },
-    @ConnectedSocket() client: Socket,
-  ) {
-    const { orderId } = data;
-
+  async handleCancelPreOrder(@MessageBody() orderId: string) {
+    const keyNotify = 'data_pre-order';
     const trackingKey = `pre-order:tracking:${orderId}`;
 
     const tracking = (await this.redis.get(trackingKey)) || [];
@@ -100,6 +96,13 @@ export class PreOrderGateway {
 
     // Redis
     await this.redis.set(trackingKey, tracking, 86400);
+
+    const dataNotify = (await this.redis.get(keyNotify)) || [];
+    const dataNotifyUpdate = dataNotify.filter((d) => d.id !== orderId);
+
+    await this.redis.set(keyNotify, dataNotifyUpdate);
+
+    this.server.to('staff_room').emit('dataPreOrder', dataNotifyUpdate);
 
     // DB
     await this.preOrderService.pushTracking(orderId, cancelTracking);

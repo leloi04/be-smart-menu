@@ -339,4 +339,86 @@ export class OrderService {
       }
     }
   }
+
+  async summaryOrder(month: string, year: string) {
+    const startDate = new Date(Number(year), Number(month) - 1, 1);
+    const endDate = new Date(Number(year), Number(month), 1);
+
+    const result = await this.OrderModel.aggregate([
+      {
+        $match: {
+          isDeleted: false,
+          createdAt: {
+            $gte: startDate,
+            $lt: endDate,
+          },
+        },
+      },
+      {
+        $group: {
+          _id: null,
+
+          totalOrders: { $sum: 1 },
+
+          totalRevenue: { $sum: '$totalPrice' },
+
+          paidOrders: {
+            $sum: {
+              $cond: [{ $eq: ['$paymentStatus', 'paid'] }, 1, 0],
+            },
+          },
+
+          unpaidOrders: {
+            $sum: {
+              $cond: [{ $eq: ['$paymentStatus', 'unpaid'] }, 1, 0],
+            },
+          },
+
+          paidRevenue: {
+            $sum: {
+              $cond: [{ $eq: ['$paymentStatus', 'paid'] }, '$totalPrice', 0],
+            },
+          },
+
+          unpaidRevenue: {
+            $sum: {
+              $cond: [{ $eq: ['$paymentStatus', 'unpaid'] }, '$totalPrice', 0],
+            },
+          },
+
+          completedOrders: {
+            $sum: {
+              $cond: [{ $eq: ['$progressStatus', 'completed'] }, 1, 0],
+            },
+          },
+
+          processingOrders: {
+            $sum: {
+              $cond: [{ $eq: ['$progressStatus', 'processing'] }, 1, 0],
+            },
+          },
+
+          draftOrders: {
+            $sum: {
+              $cond: [{ $eq: ['$progressStatus', 'draft'] }, 1, 0],
+            },
+          },
+        },
+      },
+    ]);
+
+    return (
+      result[0] || {
+        totalOrders: 0,
+        totalRevenue: 0,
+        paidOrders: 0,
+        unpaidOrders: 0,
+        paidRevenue: 0,
+        unpaidRevenue: 0,
+        completedOrders: 0,
+        processingOrders: 0,
+        draftOrders: 0,
+      }
+    );
+  }
 }

@@ -87,8 +87,16 @@ export class ReservationsController {
 
   @Post('cancel-reservation')
   @ResponseMessage('cancel table in advance')
-  cancelTableReservation(@Body('reservationId') reservationId: string) {
-    return this.reservationsService.cancelTableReservation(reservationId);
+  cancelTableReservation(
+    @Body('reservationId') reservationId: string,
+    @Body('date') date: string,
+    @Body('timeSlot') timeSlot: string,
+  ) {
+    return this.reservationsService.cancelTableReservation(
+      reservationId,
+      date,
+      timeSlot,
+    );
   }
 
   @Public()
