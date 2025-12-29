@@ -11,11 +11,13 @@ import { Table, TableDocument } from './schemas/table.schema';
 import { IUser } from 'src/types/global.constanst';
 import aqp from 'api-query-params';
 import { randomBytes } from 'crypto';
+import { Order, OrderDocument } from 'src/order/schemas/order.schema';
 
 @Injectable()
 export class TableService {
   constructor(
     @InjectModel(Table.name) private TableModel: SoftDeleteModel<TableDocument>,
+    @InjectModel(Order.name) private OrderModel: SoftDeleteModel<OrderDocument>,
   ) {}
 
   async create(createTableDto: CreateTableDto, user: IUser) {
@@ -123,5 +125,37 @@ export class TableService {
 
   async getAllTable() {
     return this.TableModel.find({});
+  }
+
+  async handleChangeStatusTable(tableId: string, status: string) {
+    const table = await this.TableModel.findById(tableId);
+    if (!table) {
+      throw new BadRequestException('Không có dữ liệu về table chọn!');
+    }
+    if (status == 'cleaning') {
+      const isCurrentOrder = table.currentOrder;
+      if (!isCurrentOrder) {
+        return await this.TableModel.findByIdAndUpdate(tableId, {
+          status,
+        });
+      }
+      const orderCurrent = await this.OrderModel.findById(isCurrentOrder);
+      if (!orderCurrent) {
+        throw new BadRequestException(
+          'Không có dữ liệu order của bàn hiện tại!',
+        );
+      }
+      await this.OrderModel.findByIdAndUpdate(orderCurrent._id, {
+        progressStatus: 'completed',
+      });
+      return await this.TableModel.findByIdAndUpdate(tableId, {
+        currentOrder: null,
+        status,
+      });
+    } else if (status == 'empty') {
+      return await this.TableModel.findByIdAndUpdate(tableId, {
+        status,
+      });
+    }
   }
 }

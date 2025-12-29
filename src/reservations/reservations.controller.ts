@@ -124,4 +124,16 @@ export class ReservationsController {
       customerPhone,
     );
   }
+
+  @Post('summary')
+  @ResponseMessage('Summary reservation for dashboard ')
+  summaryReservation(@Body('month') month: string, @Body('year') year: string) {
+    return this.reservationsService.summaryReservation(month, year);
+  }
+
+  @Post('summary-today')
+  @ResponseMessage('Summary reservation for dashboard ')
+  summaryReservationToday(@Body('date') date: string) {
+    return this.reservationsService.summaryReservationToday(date);
+  }
 }

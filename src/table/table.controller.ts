@@ -76,10 +76,19 @@ export class TableController {
     };
   }
 
-  @Public()
   @Post('data')
   @ResponseMessage('Fetch all table')
   getAllTable() {
     return this.tableService.getAllTable();
+  }
+
+  @Public()
+  @Post('change-status')
+  @ResponseMessage('Change status for table')
+  handleChangeStatusTable(
+    @Body('tableId') tableId: string,
+    @Body('status') status: string,
+  ) {
+    return this.tableService.handleChangeStatusTable(tableId, status);
   }
 }

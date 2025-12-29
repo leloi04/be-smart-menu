@@ -107,4 +107,23 @@ export class OrderController {
   async summaryOrder(@Body('month') month: string, @Body('year') year: string) {
     return this.orderService.summaryOrder(month, year);
   }
+
+  @Post('/summary-every-month')
+  @ResponseMessage('Summary total order in many month for table')
+  async summaryOrderForTable(@Body('year') year: string) {
+    return this.orderService.summaryOrderForTable(year);
+  }
+
+  @Post('top-items')
+  @ResponseMessage('Top items in order table ')
+  topItems(@Body('month') month: string, @Body('year') year: string) {
+    return this.orderService.topItems(month, year);
+  }
+
+  @Public()
+  @Post('revenue-month')
+  @ResponseMessage('Revenue this month of table')
+  revenueTable(@Body('month') month: string, @Body('year') year: string) {
+    return this.orderService.revenueTable(month, year);
+  }
 }

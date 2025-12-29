@@ -4,10 +4,14 @@ import { TableController } from './table.controller';
 import { MongooseModule } from '@nestjs/mongoose';
 import { Table, TableSchema } from './schemas/table.schema';
 import { OrderModule } from 'src/order/order.module';
+import { Order, OrderSchema } from 'src/order/schemas/order.schema';
 
 @Module({
   imports: [
-    MongooseModule.forFeature([{ name: Table.name, schema: TableSchema }]),
+    MongooseModule.forFeature([
+      { name: Table.name, schema: TableSchema },
+      { name: Order.name, schema: OrderSchema },
+    ]),
     forwardRef(() => OrderModule),
   ],
   controllers: [TableController],

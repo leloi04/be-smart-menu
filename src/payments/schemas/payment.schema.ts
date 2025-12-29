@@ -11,7 +11,7 @@ export class Payment {
   @Prop({ Type: mongoose.Schema.Types.ObjectId, ref: Order.name })
   orderId: string;
 
-  @Prop({ enum: ['cash', 'vnpay'] })
+  @Prop({ enum: ['cash', 'vnpay', 'bank'] })
   method: string;
 
   @Prop()

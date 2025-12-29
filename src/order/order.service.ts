@@ -421,4 +421,144 @@ export class OrderService {
       }
     );
   }
+
+  async summaryOrderForTable(year: string) {
+    const startDate = new Date(Number(year), 0, 1);
+    const endDate = new Date(Number(year) + 1, 0, 1);
+
+    const result = await this.OrderModel.aggregate([
+      {
+        $match: {
+          isDeleted: false,
+          createdAt: {
+            $gte: startDate,
+            $lt: endDate,
+          },
+        },
+      },
+      {
+        $group: {
+          _id: { $month: '$createdAt' }, // 1 -> 12
+          totalOrders: { $sum: 1 },
+        },
+      },
+      {
+        $project: {
+          _id: 0,
+          month: '$_id',
+          totalOrders: 1,
+        },
+      },
+      {
+        $sort: { month: 1 },
+      },
+    ]);
+
+    const monthlyData = Array.from({ length: 12 }, (_, i) => {
+      const month = i + 1;
+      const found = result.find((r) => r.month === month);
+      return {
+        month,
+        totalOrders: found ? found.totalOrders : 0,
+      };
+    });
+
+    return monthlyData;
+  }
+
+  async topItems(month: string, year: string) {
+    const startDate = new Date(Number(year), Number(month) - 1, 1);
+    const endDate = new Date(Number(year), Number(month), 1);
+
+    const result = await this.OrderModel.aggregate([
+      {
+        $match: {
+          isDeleted: false,
+          createdAt: {
+            $gte: startDate,
+            $lt: endDate,
+          },
+        },
+      },
+
+      {
+        $unwind: '$orderItems',
+      },
+
+      {
+        $group: {
+          _id: '$orderItems.menuItemId',
+          name: { $first: '$orderItems.name' },
+          quantity: { $sum: '$orderItems.quantity' },
+        },
+      },
+
+      {
+        $project: {
+          _id: 0,
+          menuItemId: '$_id',
+          name: 1,
+          quantity: 1,
+        },
+      },
+    ]);
+
+    return result;
+  }
+
+  async revenueTable(month: string, year: string) {
+    const startDate = new Date(Number(year), Number(month) - 1, 1);
+    const endDate = new Date(Number(year), Number(month), 1);
+
+    const result = await this.OrderModel.aggregate([
+      {
+        $match: {
+          isDeleted: false,
+          paymentStatus: 'paid',
+          createdAt: {
+            $gte: startDate,
+            $lt: endDate,
+          },
+        },
+      },
+
+      {
+        $lookup: {
+          from: 'tables',
+          localField: 'tableId',
+          foreignField: '_id',
+          as: 'table',
+        },
+      },
+
+      {
+        $unwind: '$table',
+      },
+
+      {
+        $group: {
+          _id: '$table._id',
+          tableNumber: { $first: '$table.tableNumber' },
+          revenue: { $sum: '$totalPrice' },
+        },
+      },
+
+      {
+        $project: {
+          _id: 0,
+          tableId: '$_id',
+          tableNumber: 1,
+          revenue: 1,
+        },
+      },
+
+      {
+        $sort: {
+          tableNumber: 1,
+        },
+      },
+    ]);
+
+    return result;
+  }
 }

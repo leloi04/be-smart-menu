@@ -9,6 +9,10 @@ import * as qs from 'qs';
 import { Order, OrderDocument } from 'src/order/schemas/order.schema';
 import { Table, TableDocument } from 'src/table/schemas/table.schema';
 import { OrderService } from 'src/order/order.service';
+import {
+  PreOrder,
+  PreOrderDocument,
+} from 'src/pre-order/schemas/pre-order.schema';
 
 @Injectable()
 export class PaymentsService {
@@ -17,6 +21,8 @@ export class PaymentsService {
     private PaymentModel: SoftDeleteModel<PaymentDocument>,
     @InjectModel(Order.name)
     private OrderModel: SoftDeleteModel<OrderDocument>,
+    @InjectModel(PreOrder.name)
+    private PreOrderModel: SoftDeleteModel<PreOrderDocument>,
     @InjectModel(Table.name)
     private TableModel: SoftDeleteModel<TableDocument>,
     private readonly orderService: OrderService,
@@ -170,13 +176,34 @@ export class PaymentsService {
   /**
    * 💵 Thanh toán bằng tiền mặt
    */
-  async createCashPayment(orderId: string, amount: number) {
-    // Giả lập transactionCode
+  async createCashPayment(orderId: string, amount: number, orderIn: string) {
+    const isExistPayment = await this.PaymentModel.findOne({ orderId });
+    if (isExistPayment) {
+      throw new BadRequestException('Đơn hàng này đã được thanh toán!');
+    }
+    if (orderIn == 'online') {
+      const order = await this.PreOrderModel.findById(orderId);
+      if (!order) {
+        throw new BadRequestException('Không có order đang thanh toán!');
+      }
+      await this.PreOrderModel.findByIdAndUpdate(orderId, {
+        paymentStatus: 'paid',
+      });
+    } else {
+      const order = await this.OrderModel.findById(orderId);
+      if (!order) {
+        throw new BadRequestException('Không có order đang thanh toán!');
+      }
+      await this.OrderModel.findByIdAndUpdate(orderId, {
+        paymentStatus: 'paid',
+      });
+    }
     const transactionCode = `CASH-${Date.now()}`;
 
     const payment = await this.PaymentModel.create({
       orderId,
       method: 'cash',
+      status: 'completed',
       amount,
       transactionCode,
     });
@@ -184,6 +211,48 @@ export class PaymentsService {
     return {
       success: true,
       message: 'Thanh toán tiền mặt thành công',
+      payment,
+    };
+  }
+
+  /**
+   * 💵 Thanh toán qua ngân hàng
+   */
+  async createBankPayment(orderId: string, amount: number, orderIn: string) {
+    const isExistPayment = await this.PaymentModel.findOne({ orderId });
+    if (isExistPayment) {
+      throw new BadRequestException('Đơn hàng này đã được thanh toán!');
+    }
+    if (orderIn == 'online') {
+      const order = await this.PreOrderModel.findById(orderId);
+      if (!order) {
+        throw new BadRequestException('Không có order đang thanh toán!');
+      }
+      await this.PreOrderModel.findByIdAndUpdate(orderId, {
+        paymentStatus: 'paid',
+      });
+    } else {
+      const order = await this.OrderModel.findById(orderId);
+      if (!order) {
+        throw new BadRequestException('Không có order đang thanh toán!');
+      }
+      await this.OrderModel.findByIdAndUpdate(orderId, {
+        paymentStatus: 'paid',
+      });
+    }
+    const transactionCode = `BANK-${Date.now()}`;
+
+    const payment = await this.PaymentModel.create({
+      orderId,
+      method: 'bank',
+      status: 'completed',
+      amount,
+      transactionCode,
+    });
+
+    return {
+      success: true,
+      message: 'Thanh toán ngân hàng thành công',
       payment,
     };
   }
@@ -222,5 +291,161 @@ export class PaymentsService {
       success: true,
       message: 'Payment handled successfully',
     };
+  }
+
+  async fetchOrderUnpayment() {
+    const dataPreOrder = await this.PreOrderModel.find({
+      paymentStatus: 'unpaid',
+    }).populate({ path: 'customerId', select: 'name phone _id' });
+    const dataOderTable = await this.OrderModel.find({
+      paymentStatus: 'unpaid',
+    }).populate({ path: 'tableId', select: 'tableNumber _id' });
+    const dataPreOrderMap = dataPreOrder.map((o) => ({
+      id: o._id,
+      customerInfo: o.customerId,
+      amount: o.totalPayment,
+      orderItems: o.orderItems,
+    }));
+    const dataOrderTableMap = dataOderTable.map((o) => ({
+      id: o._id,
+      tableInfo: o.tableId,
+      amount: o.totalPrice,
+      orderItems: o.orderItems,
+    }));
+    return [...dataOrderTableMap, ...dataPreOrderMap];
+  }
+
+  async summaryPayment(month: string, year: string) {
+    const startDate = new Date(Number(year), Number(month) - 1, 1);
+    const endDate = new Date(Number(year), Number(month), 1);
+
+    const result = await this.PaymentModel.aggregate([
+      {
+        $match: {
+          isDeleted: false,
+          createdAt: {
+            $gte: startDate,
+            $lt: endDate,
+          },
+        },
+      },
+      {
+        $group: {
+          _id: null,
+
+          // Tổng số giao dịch
+          totalPayments: { $sum: 1 },
+
+          // Tổng tiền tất cả giao dịch
+          totalAmount: { $sum: '$amount' },
+
+          // Giao dịch thành công
+          completedPayments: {
+            $sum: {
+              $cond: [{ $eq: ['$status', 'completed'] }, 1, 0],
+            },
+          },
+
+          // Giao dịch thất bại
+          failedPayments: {
+            $sum: {
+              $cond: [{ $eq: ['$status', 'failed'] }, 1, 0],
+            },
+          },
+
+          // Doanh thu thành công
+          completedAmount: {
+            $sum: {
+              $cond: [{ $eq: ['$status', 'completed'] }, '$amount', 0],
+            },
+          },
+
+          // Số tiền thất bại
+          failedAmount: {
+            $sum: {
+              $cond: [{ $eq: ['$status', 'failed'] }, '$amount', 0],
+            },
+          },
+
+          // Theo phương thức thanh toán
+          cashPayments: {
+            $sum: {
+              $cond: [{ $eq: ['$method', 'cash'] }, 1, 0],
+            },
+          },
+
+          bankPayments: {
+            $sum: {
+              $cond: [{ $eq: ['$method', 'bank'] }, 1, 0],
+            },
+          },
+
+          vnpayPayments: {
+            $sum: {
+              $cond: [{ $eq: ['$method', 'vnpay'] }, 1, 0],
+            },
+          },
+        },
+      },
+    ]);
+
+    return (
+      result[0] || {
+        totalPayments: 0,
+        totalAmount: 0,
+        completedPayments: 0,
+        failedPayments: 0,
+        completedAmount: 0,
+        failedAmount: 0,
+        cashPayments: 0,
+        bankPayments: 0,
+        vnpayPayments: 0,
+      }
+    );
+  }
+
+  async summaryRevenue(year: string) {
+    const startDate = new Date(Number(year), 0, 1);
+    const endDate = new Date(Number(year) + 1, 0, 1);
+
+    const result = await this.PaymentModel.aggregate([
+      {
+        $match: {
+          isDeleted: false,
+          status: 'completed',
+          createdAt: {
+            $gte: startDate,
+            $lt: endDate,
+          },
+        },
+      },
+      {
+        $group: {
+          _id: { $month: '$createdAt' }, // 1 -> 12
+          totalRevenue: { $sum: '$amount' },
+        },
+      },
+      {
+        $project: {
+          _id: 0,
+          month: '$_id',
+          totalRevenue: 1,
+        },
+      },
+      {
+        $sort: { month: 1 },
+      },
+    ]);
+
+    const monthlyRevenue = Array.from({ length: 12 }, (_, i) => {
+      const month = i + 1;
+      const found = result.find((r) => r.month === month);
+      return {
+        month,
+        totalRevenue: found ? found.totalRevenue : 0,
+      };
+    });
+
+    return monthlyRevenue;
   }
 }

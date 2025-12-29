@@ -42,11 +42,28 @@ export class PaymentsController {
     return this.paymentsService.remove(+id);
   }
 
-  @Public()
   @ResponseMessage('Thanh toán tiền mặt hoàn tất!')
   @Post('cash')
-  async payCash(@Body() dto: { orderId: string; amount: number }) {
-    return this.paymentsService.createCashPayment(dto.orderId, dto.amount);
+  async payCash(
+    @Body() dto: { orderId: string; amount: number; orderIn: string },
+  ) {
+    return this.paymentsService.createCashPayment(
+      dto.orderId,
+      dto.amount,
+      dto.orderIn,
+    );
+  }
+
+  @ResponseMessage('Thanh toán qua ngân hàng hoàn tất!')
+  @Post('bank')
+  async payBank(
+    @Body() dto: { orderId: string; amount: number; orderIn: string },
+  ) {
+    return this.paymentsService.createBankPayment(
+      dto.orderId,
+      dto.amount,
+      dto.orderIn,
+    );
   }
 
   @Public()
@@ -66,5 +83,24 @@ export class PaymentsController {
   @Post('handle-payment-success')
   async handlePaymentSuccess(@Body('id') id: string) {
     return this.paymentsService.handlePaymentSuccess(id);
+  }
+
+  @Post('summary')
+  async summaryPayment(
+    @Body('month') month: string,
+    @Body('year') year: string,
+  ) {
+    return this.paymentsService.summaryPayment(month, year);
+  }
+
+  @Post('unpayment')
+  async fetchOrderUnpayment() {
+    return this.paymentsService.fetchOrderUnpayment();
+  }
+
+  @Public()
+  @Post('summary-every-month')
+  async summaryRevenue(@Body('year') year: string) {
+    return this.paymentsService.summaryRevenue(year);
   }
 }

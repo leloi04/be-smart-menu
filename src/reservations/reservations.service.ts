@@ -239,4 +239,89 @@ export class ReservationsService implements OnModuleInit {
     });
     return existingReservations ? 'yes' : 'no';
   }
+
+  async summaryReservation(month: string, year: string) {
+    const startDate = new Date(Number(year), Number(month) - 1, 1);
+    const endDate = new Date(Number(year), Number(month), 1);
+
+    const result = await this.ReservationModel.aggregate([
+      {
+        $match: {
+          isDeleted: false,
+          createdAt: {
+            $gte: startDate,
+            $lt: endDate,
+          },
+        },
+      },
+      {
+        $group: {
+          _id: null,
+
+          totalReservations: { $sum: 1 },
+
+          checkedIn: {
+            $sum: {
+              $cond: [{ $eq: ['$status', 'checked_in'] }, 1, 0],
+            },
+          },
+
+          expired: {
+            $sum: {
+              $cond: [{ $eq: ['$status', 'expired'] }, 1, 0],
+            },
+          },
+
+          cancelled: {
+            $sum: {
+              $cond: [{ $eq: ['$status', 'cancelled'] }, 1, 0],
+            },
+          },
+
+          active: {
+            $sum: {
+              $cond: [
+                {
+                  $and: [
+                    { $ne: ['$status', 'expired'] },
+                    { $ne: ['$status', 'cancelled'] },
+                  ],
+                },
+                1,
+                0,
+              ],
+            },
+          },
+        },
+      },
+    ]);
+
+    return (
+      result[0] || {
+        totalReservations: 0,
+        checkedIn: 0,
+        expired: 0,
+        cancelled: 0,
+        active: 0,
+      }
+    );
+  }
+
+  async summaryReservationToday(date: string) {
+    const data = await this.ReservationModel.find({ date })
+      .populate({
+        path: 'tableId',
+        select: 'tableNumber',
+      })
+      .sort('-timeSlot');
+    const dataMap = data.map((r) => ({
+      customerName: r.customerName,
+      customerPhone: r.customerPhone,
+      tableData: r.tableId,
+      capacity: r.capacity,
+      timeSlot: r.timeSlot,
+      status: r.status,
+    }));
+    return dataMap;
+  }
 }

@@ -7,7 +7,7 @@ export class CreatePaymentDto {
   orderId: mongoose.Schema.Types.ObjectId;
 
   @IsNotEmpty({ message: 'method không được để trống' })
-  @IsEnum(['cash', 'vnpay'])
+  @IsEnum(['cash', 'vnpay', 'bank'])
   method: string;
 
   @IsNotEmpty({ message: 'amount không được để trống' })

@@ -162,6 +162,11 @@ export class UsersService implements OnModuleInit {
   };
 
   async update(id: string, updateUserDto: UpdateUserDto, user: IUser) {
+    const { email } = updateUserDto;
+    const isExist = await this.UserModel.findOne({ email });
+    if (isExist) {
+      throw new BadRequestException(`email ${email} nay da ton tai`);
+    }
     return await this.UserModel.updateOne(
       { _id: id },
       {

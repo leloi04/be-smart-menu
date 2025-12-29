@@ -196,4 +196,185 @@ export class PreOrderService {
   async completePreOrder(id: string) {
     await this.preOrderGateway.handleCompletePreOrder(id);
   }
+
+  async summaryPreOrder(month: string, year: string) {
+    const startDate = new Date(Number(year), Number(month) - 1, 1);
+    const endDate = new Date(Number(year), Number(month), 1);
+
+    const result = await this.PreOrderModel.aggregate([
+      {
+        $match: {
+          isDeleted: false,
+          createdAt: {
+            $gte: startDate,
+            $lt: endDate,
+          },
+        },
+      },
+      {
+        $addFields: {
+          hasCompleted: {
+            $gt: [
+              {
+                $size: {
+                  $filter: {
+                    input: '$tracking',
+                    as: 't',
+                    cond: { $eq: ['$$t.status', 'completed'] },
+                  },
+                },
+              },
+              0,
+            ],
+          },
+        },
+      },
+      {
+        $group: {
+          _id: null,
+
+          totalOrders: { $sum: 1 },
+
+          totalRevenue: { $sum: '$totalPayment' },
+
+          paidOrders: {
+            $sum: {
+              $cond: [{ $eq: ['$paymentStatus', 'paid'] }, 1, 0],
+            },
+          },
+
+          unpaidOrders: {
+            $sum: {
+              $cond: [{ $eq: ['$paymentStatus', 'unpaid'] }, 1, 0],
+            },
+          },
+
+          paidRevenue: {
+            $sum: {
+              $cond: [{ $eq: ['$paymentStatus', 'paid'] }, '$totalPayment', 0],
+            },
+          },
+
+          unpaidRevenue: {
+            $sum: {
+              $cond: [
+                { $eq: ['$paymentStatus', 'unpaid'] },
+                '$totalPayment',
+                0,
+              ],
+            },
+          },
+
+          completedOrders: {
+            $sum: {
+              $cond: ['$hasCompleted', 1, 0],
+            },
+          },
+
+          processingOrders: {
+            $sum: {
+              $cond: ['$hasCompleted', 0, 1],
+            },
+          },
+        },
+      },
+    ]);
+
+    return (
+      result[0] || {
+        totalOrders: 0,
+        totalRevenue: 0,
+        paidOrders: 0,
+        unpaidOrders: 0,
+        paidRevenue: 0,
+        unpaidRevenue: 0,
+        completedOrders: 0,
+        processingOrders: 0,
+      }
+    );
+  }
+
+  async summaryOrderForOnline(year: string) {
+    const startDate = new Date(Number(year), 0, 1);
+    const endDate = new Date(Number(year) + 1, 0, 1);
+
+    const result = await this.PreOrderModel.aggregate([
+      {
+        $match: {
+          isDeleted: false,
+          createdAt: {
+            $gte: startDate,
+            $lt: endDate,
+          },
+        },
+      },
+      {
+        $group: {
+          _id: { $month: '$createdAt' }, // 1 -> 12
+          totalOrders: { $sum: 1 },
+        },
+      },
+      {
+        $project: {
+          _id: 0,
+          month: '$_id',
+          totalOrders: 1,
+        },
+      },
+      {
+        $sort: { month: 1 },
+      },
+    ]);
+
+    const monthlyData = Array.from({ length: 12 }, (_, i) => {
+      const month = i + 1;
+      const found = result.find((r) => r.month === month);
+      return {
+        month,
+        totalOrders: found ? found.totalOrders : 0,
+      };
+    });
+
+    return monthlyData;
+  }
+
+  async topItems(month: string, year: string) {
+    const startDate = new Date(Number(year), Number(month) - 1, 1);
+    const endDate = new Date(Number(year), Number(month), 1);
+
+    const result = await this.PreOrderModel.aggregate([
+      {
+        $match: {
+          isDeleted: false,
+          createdAt: {
+            $gte: startDate,
+            $lt: endDate,
+          },
+        },
+      },
+
+      {
+        $unwind: '$orderItems',
+      },
+
+      {
+        $group: {
+          _id: '$orderItems.menuItemId',
+          name: { $first: '$orderItems.name' },
+          quantity: { $sum: '$orderItems.quantity' },
+        },
+      },
+
+      {
+        $project: {
+          _id: 0,
+          menuItemId: '$_id',
+          name: 1,
+          quantity: 1,
+        },
+      },
+    ]);
+
+    return result;
+  }
 }

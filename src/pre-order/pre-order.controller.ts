@@ -81,4 +81,22 @@ export class PreOrderController {
   completePreOrder(@Body('id') id: string) {
     return this.preOrderService.completePreOrder(id);
   }
+
+  @Post('summary')
+  @ResponseMessage('Summary pre-order for dashboard ')
+  summaryPreOrder(@Body('month') month: string, @Body('year') year: string) {
+    return this.preOrderService.summaryPreOrder(month, year);
+  }
+
+  @Post('/summary-every-month')
+  @ResponseMessage('Summary total order in many month for online')
+  async summaryOrderForOnline(@Body('year') year: string) {
+    return this.preOrderService.summaryOrderForOnline(year);
+  }
+
+  @Post('top-items')
+  @ResponseMessage('Top items in pre-order ')
+  topItems(@Body('month') month: string, @Body('year') year: string) {
+    return this.preOrderService.topItems(month, year);
+  }
 }
