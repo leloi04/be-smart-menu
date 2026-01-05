@@ -112,7 +112,7 @@ export class PreOrderGateway {
   async handleCompletePreOrder(orderId: string) {
     const keyNotify = 'data_pre-order';
     const trackingKey = `pre-order:tracking:${orderId}`;
-    const tracking = (await this.redis.get(trackingKey)) || [];
+    const tracking = (await this.redis.get(trackingKey)) || { tracking: [] };
 
     const completedTracking = {
       status: PRE_ORDER_STATUS.COMPLETED,

@@ -18,6 +18,8 @@ import { ReservationsModule } from './reservations/reservations.module';
 import { ScheduleModule } from '@nestjs/schedule';
 import { BullQueueModule } from './bull-queue/bull-queue.module';
 import { PreOrderModule } from './pre-order/pre-order.module';
+import { PromotionModule } from './promotion/promotion.module';
+import { SettingsModule } from './settings/settings.module';
 
 @Module({
   imports: [
@@ -50,6 +52,8 @@ import { PreOrderModule } from './pre-order/pre-order.module';
     ReservationsModule,
     BullQueueModule,
     PreOrderModule,
+    PromotionModule,
+    SettingsModule,
   ],
   controllers: [AppController],
   providers: [AppService],

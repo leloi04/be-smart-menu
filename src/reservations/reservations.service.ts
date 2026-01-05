@@ -40,6 +40,7 @@ export class ReservationsService implements OnModuleInit {
       date,
       timeSlot,
       tableId,
+      status: 'upcoming',
     }).populate({
       path: 'tableId',
       select: { tableNumber: 1, _id: 1 },
@@ -214,17 +215,17 @@ export class ReservationsService implements OnModuleInit {
       result = await this.ReservationModel.find({
         status: status,
         customerPhone: customerPhone,
-      });
+      }).populate({ path: 'tableId', select: 'tableNumber' });
     } else if (status == 'checked_in') {
       result = await this.ReservationModel.find({
         status: status,
         customerPhone: customerPhone,
-      });
+      }).populate({ path: 'tableId', select: 'tableNumber' });
     } else if (status == 'cancelled-expired') {
       result = await this.ReservationModel.find({
         status: { $in: ['cancelled', 'expired'] },
         customerPhone: customerPhone,
-      });
+      }).populate({ path: 'tableId', select: 'tableNumber' });
     }
 
     return result;

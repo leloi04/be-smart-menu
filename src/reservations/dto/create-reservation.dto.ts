@@ -4,7 +4,6 @@ import {
   IsNumber,
   IsOptional,
   IsMongoId,
-  IsIn,
 } from 'class-validator';
 
 export class CreateReservationDto {
