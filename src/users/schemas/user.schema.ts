@@ -12,7 +12,7 @@ export class User {
   @Prop({ required: true, unique: true })
   email: string;
 
-  @Prop({ required: true })
+  @Prop()
   password: string;
 
   @Prop()
@@ -29,6 +29,16 @@ export class User {
 
   @Prop()
   refreshToken: string;
+
+  @Prop({
+    type: [String],
+    enum: ['local', 'google'],
+    default: ['local'],
+  })
+  providers: string[];
+
+  @Prop({ type: String, default: null })
+  googleId: string;
 
   @Prop()
   createdAt: Date;

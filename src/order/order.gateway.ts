@@ -568,10 +568,8 @@ export class OrderGateway {
         const itemsDf = dataOrderInKey.filter(
           (i) => i.menuItemId != menuItemId,
         );
-        console.log('itemsDf: ', itemsDf);
         // item completed
         const item = dataOrderInKey.find((i) => i.menuItemId == menuItemId);
-        console.log('item: ', item);
 
         const dataKeyRedisOrder = await this.redis.get(dataKey);
 
@@ -743,10 +741,7 @@ export class OrderGateway {
       const lengthAddsOrder = dataAddsOrder.reduce((a, c) => {
         return a + c.orderItems.length;
       }, 0);
-      console.log('lengthFirstOrder: ', lengthFirstOrder);
-      console.log('lengthAddsOrder: ', lengthAddsOrder);
       if (lengthFirstOrder == 0 && lengthAddsOrder == 0) {
-        console.log(`Bàn ${tableNumber} da hoan thanh xong!`);
         this.emitOrderStatusChanged(tableNumber, 'completed');
         await this.orderService.completedOrder(tableNumber);
       }
@@ -863,14 +858,11 @@ export class OrderGateway {
     client.emit('staffPreOrderNotificationSync', preOrderNotifications);
     client.emit('dataTable', dataTable);
     client.emit('dataPreOrder', dataPreOrder);
-
-    console.log(`Staff ${client.id} joined staff_room`);
   }
 
   @SubscribeMessage('leaveStaff')
   handleLeaveStaff(@ConnectedSocket() client: Socket) {
     client.leave('staff_room');
-    console.log(`Staff ${client.id} left staff_room`);
   }
 
   // 🧑‍🍳 Chef Join Area Room
@@ -901,8 +893,6 @@ export class OrderGateway {
       area,
       items: existingItems,
     });
-
-    console.log(`Chef ${client.id} joined ${roomName}`);
   }
 
   @SubscribeMessage('leaveChefArea')
@@ -912,6 +902,5 @@ export class OrderGateway {
   ) {
     const roomName = `${area}_room`;
     client.leave(roomName);
-    console.log(`Chef ${client.id} left ${roomName}`);
   }
 }

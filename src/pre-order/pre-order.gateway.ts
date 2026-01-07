@@ -82,9 +82,17 @@ export class PreOrderGateway {
   // 🔔 Khi khách/nhân viên hủy đơn
   @SubscribeMessage('cancelPreOrder')
   async handleCancelPreOrder(@MessageBody() orderId: string) {
+    const dataKey = `pre-order:${orderId}`;
     const keyNotify = 'data_pre-order';
     const trackingKey = `pre-order:tracking:${orderId}`;
+    const CHEF_MAP = [
+      { area: 'HOT', key: 'HOT_chef' },
+      { area: 'DRINK', key: 'DRINK_chef' },
+      { area: 'COLD', key: 'COLD_chef' },
+      { area: 'GRILL', key: 'GRILL_chef' },
+    ];
 
+    // Handler notification for staff
     const tracking = (await this.redis.get(trackingKey)) || [];
 
     const cancelTracking = {
@@ -93,6 +101,20 @@ export class PreOrderGateway {
     };
 
     tracking.tracking.push(cancelTracking);
+
+    // Handler Items In Chef
+    for (const chef of CHEF_MAP) {
+      const chefData = (await this.redis.get(chef.key)) || [];
+
+      const filteredItems = chefData.filter((item) => item.dataKey !== dataKey);
+
+      await this.redis.set(chef.key, filteredItems);
+
+      this.server.to(`${chef.area}_room`).emit('currentOrderItems', {
+        area: chef.area,
+        items: filteredItems,
+      });
+    }
 
     // Redis
     await this.redis.set(trackingKey, tracking, 86400);

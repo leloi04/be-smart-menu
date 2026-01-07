@@ -6,14 +6,20 @@ import { JwtService } from '@nestjs/jwt';
 import { Response } from 'express';
 import ms from 'ms';
 import { IUser } from 'src/types/global.constanst';
+import { OAuth2Client } from 'google-auth-library';
 
 @Injectable()
 export class AuthService {
+  private googleClient: OAuth2Client;
   constructor(
     private usersService: UsersService,
     private jwtService: JwtService,
     private configService: ConfigService,
-  ) {}
+  ) {
+    this.googleClient = new OAuth2Client(
+      this.configService.get<string>('GOOGLE_CLIENT_ID'),
+    );
+  }
 
   validateUser = async (username: string, password: string) => {
     const user = await this.usersService.findOneByUsername(username);
@@ -151,4 +157,37 @@ export class AuthService {
       throw new BadRequestException('Refresh token loi');
     }
   };
+
+  async loginWithGoogle(payload: any, response: Response) {
+    const { email, name, avatar, googleId } = payload;
+
+    if (!email) {
+      throw new BadRequestException('Google data không hợp lệ');
+    }
+
+    let user = await this.usersService.findByEmail(email);
+
+    if (!user) {
+      user = await this.usersService.createFromGoogle({
+        email,
+        name,
+        avatar,
+        googleId,
+      });
+    } else {
+      user.avatar = avatar;
+
+      if (!user.googleId) {
+        user.googleId = googleId;
+      }
+
+      if (!user.providers?.includes('google')) {
+        user.providers = [...(user.providers || []), 'google'];
+      }
+
+      await user.save();
+    }
+
+    return this.login(user, response);
+  }
 }

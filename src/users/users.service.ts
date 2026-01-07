@@ -51,24 +51,28 @@ export class UsersService implements OnModuleInit {
   }
 
   async create(createUserDto: CreateUserDto, user: IUser) {
-    const { email, role } = createUserDto;
+    const { email, role, phone } = createUserDto;
     const { password } = createUserDto;
     const salt = genSaltSync(10);
     const hashPassword = hashSync(password, salt);
 
-    const isExist = await this.UserModel.findOne({ email });
-    if (isExist) {
+    const isExistEmail = await this.UserModel.findOne({ email });
+    if (isExistEmail) {
       throw new BadRequestException(`email ${email} nay da ton tai`);
+    }
+    const isExistPhone = await this.UserModel.findOne({ phone });
+    if (isExistPhone) {
+      throw new BadRequestException(`sđt ${phone} đã có người sử dụng!`);
     }
 
     const newUser = await this.UserModel.create({
       ...createUserDto,
       role: role ?? new mongoose.Types.ObjectId(CUSTOMER_ROLE_ID),
       password: hashPassword,
-      // createdBy: {
-      //   _id: user?._id,
-      //   email: user?.email,
-      // },
+      createdBy: {
+        _id: user?._id,
+        email: user?.email,
+      },
     });
 
     return {
@@ -78,14 +82,18 @@ export class UsersService implements OnModuleInit {
   }
 
   async register(RegisterUserDto: RegisterUserDto) {
-    const { email } = RegisterUserDto;
+    const { email, phone } = RegisterUserDto;
     const { password } = RegisterUserDto;
     const salt = genSaltSync(10);
     const hashPassword = hashSync(password, salt);
 
-    const isExist = await this.UserModel.findOne({ email });
-    if (isExist) {
+    const isExistEmail = await this.UserModel.findOne({ email });
+    if (isExistEmail) {
       throw new BadRequestException(`email ${email} nay da ton tai`);
+    }
+    const isExistPhone = await this.UserModel.findOne({ phone });
+    if (isExistPhone) {
+      throw new BadRequestException(`sđt ${phone} đã có người sử dụng!`);
     }
     const user = await this.UserModel.create({
       ...RegisterUserDto,
@@ -158,14 +166,22 @@ export class UsersService implements OnModuleInit {
   }
 
   findUserByRefreshToken = async (refreshToken: string) => {
-    return await this.UserModel.findOne({ refreshToken });
+    return await this.UserModel.findOne({ refreshToken }).populate({
+      path: 'role',
+      select: { name: 1 },
+    });
   };
 
   async update(id: string, updateUserDto: UpdateUserDto, user: IUser) {
-    const { email } = updateUserDto;
-    const isExist = await this.UserModel.findOne({ email });
-    if (isExist) {
+    const { email, phone } = updateUserDto;
+    const userData = await this.UserModel.findById(id);
+    const iExistEmail = await this.UserModel.findOne({ email });
+    if (iExistEmail && email !== userData?.email) {
       throw new BadRequestException(`email ${email} nay da ton tai`);
+    }
+    const isExistPhone = await this.UserModel.findOne({ phone });
+    if (isExistPhone && phone.toString() !== userData?.phone.toString()) {
+      throw new BadRequestException(`sđt ${phone} đã có người sử dụng!`);
     }
     return await this.UserModel.updateOne(
       { _id: id },
@@ -191,6 +207,7 @@ export class UsersService implements OnModuleInit {
     );
     return this.UserModel.softDelete({ _id: id });
   }
+
   async updatePassword(updateUserPassword: UpdateUserPassword, user: IUser) {
     const { newPassword, oldPassword, email } = updateUserPassword;
     const userData = await this.UserModel.findOne({ email: email });
@@ -213,5 +230,33 @@ export class UsersService implements OnModuleInit {
         },
       },
     );
+  }
+
+  async findByEmail(email: string) {
+    return this.UserModel.findOne({ email }).populate({
+      path: 'role',
+      select: { name: 1 },
+    });
+  }
+
+  async createFromGoogle(data: {
+    email: string;
+    name: string;
+    avatar: string;
+    googleId: string;
+  }) {
+    const user = await this.UserModel.create({
+      email: data.email,
+      name: data.name,
+      role: new mongoose.Types.ObjectId(CUSTOMER_ROLE_ID),
+      avatar: data.avatar,
+      googleId: data.googleId,
+      providers: ['google'],
+    });
+
+    return this.UserModel.findById(user._id).populate({
+      path: 'role',
+      select: { name: 1 },
+    });
   }
 }

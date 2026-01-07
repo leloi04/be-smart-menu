@@ -76,6 +76,12 @@ export class PreOrderController {
     return this.preOrderService.fetchPreOrderCompleted(user);
   }
 
+  @Post('cancelled')
+  @ResponseMessage('Fetch cancelled pre-order ')
+  fetchPreOrderCancelled(@User() user: IUser) {
+    return this.preOrderService.fetchPreOrderCancelled(user);
+  }
+
   @Post('completed-pre-order')
   @ResponseMessage('completed pre-order ')
   completePreOrder(@Body('id') id: string) {

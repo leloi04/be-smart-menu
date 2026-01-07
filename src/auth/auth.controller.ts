@@ -54,4 +54,11 @@ export class AuthController {
     const refreshToken = request.cookies['refresh_token'];
     return this.authService.processNewToken(refreshToken, response);
   }
+
+  @Public()
+  @ResponseMessage('login with google')
+  @Post('google')
+  loginWithGoogle(@Body() payload: any, @Res({ passthrough: true }) response) {
+    return this.authService.loginWithGoogle(payload, response);
+  }
 }

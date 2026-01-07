@@ -193,6 +193,17 @@ export class PreOrderService {
     return data;
   }
 
+  async fetchPreOrderCancelled(user: IUser) {
+    const data = await this.PreOrderModel.find({
+      customerId: user._id,
+      tracking: {
+        $elemMatch: { status: 'cancelled' },
+      },
+    });
+
+    return data;
+  }
+
   async completePreOrder(id: string) {
     await this.preOrderGateway.handleCompletePreOrder(id);
   }
