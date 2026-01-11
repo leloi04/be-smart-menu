@@ -76,6 +76,7 @@ export class TableController {
     };
   }
 
+  @Public()
   @Post('data')
   @ResponseMessage('Fetch all table')
   getAllTable() {

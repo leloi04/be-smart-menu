@@ -11,6 +11,7 @@ import { OrderService } from './order.service';
 import { RedisService } from 'src/redis-cache/redis-cache.service';
 import { PreOrderService } from 'src/pre-order/pre-order.service';
 import { PRE_ORDER_STATUS } from 'src/types/global.constanst';
+import { TableService } from 'src/table/table.service';
 
 @WebSocketGateway({
   cors: {
@@ -25,6 +26,7 @@ export class OrderGateway {
     @Inject(forwardRef(() => OrderService))
     private readonly orderService: OrderService,
     private readonly redis: RedisService,
+    private readonly tableService: TableService,
     private readonly preOrderService: PreOrderService,
   ) {}
 
@@ -280,6 +282,20 @@ export class OrderGateway {
 
     this.server.to(`table_${order.tableId}`).emit('orderStatusChanged', order);
     this.server.to(`table_${order.tableId}`).emit('tableStatusChanged', table);
+  }
+
+  @SubscribeMessage('clearDataOrder')
+  async handleClearDataOrder(@MessageBody() tableId: string) {
+    const table = await this.tableService.findOne(tableId);
+    const tableNumber = table?.tableNumber;
+    if (!tableNumber) return;
+    const redisFirstKey = `first_order_${tableNumber}`; // order gốc lần đầu
+    const addOrderKey = `add_order_${tableNumber}`; // mảng batch add items
+    const completedOrderKey = `completed_order_${tableNumber}`; // order đã hoàn thành
+
+    await this.redis.del(redisFirstKey);
+    await this.redis.del(addOrderKey);
+    await this.redis.del(completedOrderKey);
   }
 
   @SubscribeMessage('leaveTable')

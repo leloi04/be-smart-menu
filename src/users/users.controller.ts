@@ -65,4 +65,18 @@ export class UsersController {
   ) {
     return this.usersService.updatePassword(updateUserPassword, user);
   }
+
+  @Public()
+  @Post('check-phone')
+  @ResponseMessage('Check phone')
+  handleCheckedPhone(@Body('email') email: string) {
+    return this.usersService.handleCheckedPhone(email);
+  }
+
+  @Public()
+  @Post('valid-phone')
+  @ResponseMessage('Check phone')
+  handleCheckValidPhone(@Body('phone') phone: string) {
+    return this.usersService.handleCheckValidPhone(phone);
+  }
 }

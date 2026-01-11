@@ -244,6 +244,7 @@ export class UsersService implements OnModuleInit {
     name: string;
     avatar: string;
     googleId: string;
+    phone: string;
   }) {
     const user = await this.UserModel.create({
       email: data.email,
@@ -252,11 +253,31 @@ export class UsersService implements OnModuleInit {
       avatar: data.avatar,
       googleId: data.googleId,
       providers: ['google'],
+      phone: data.phone,
     });
 
     return this.UserModel.findById(user._id).populate({
       path: 'role',
       select: { name: 1 },
     });
+  }
+
+  async handleCheckedPhone(email: string) {
+    const user = this.UserModel.findOne({ email });
+    return user;
+  }
+
+  async handleCheckValidPhone(phone: string) {
+    const user = this.UserModel.findOne({ phone });
+    return user;
+  }
+
+  async forgetPassword(email: string, password: string) {
+    await this.UserModel.findOneAndUpdate(
+      { email },
+      {
+        password,
+      },
+    );
   }
 }

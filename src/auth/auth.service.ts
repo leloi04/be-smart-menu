@@ -7,6 +7,11 @@ import { Response } from 'express';
 import ms from 'ms';
 import { IUser } from 'src/types/global.constanst';
 import { OAuth2Client } from 'google-auth-library';
+import { OtpService } from './otp.service';
+import { ResetPasswordDto, SendOtpDto, VerifyOtpDto } from './dto/otp.dto';
+import { MailService } from './mail.service';
+import { SmsService } from './sms.service';
+import { genSaltSync, hashSync } from 'bcryptjs';
 
 @Injectable()
 export class AuthService {
@@ -15,6 +20,9 @@ export class AuthService {
     private usersService: UsersService,
     private jwtService: JwtService,
     private configService: ConfigService,
+    private readonly otpService: OtpService,
+    private readonly mailService: MailService,
+    private readonly smsService: SmsService,
   ) {
     this.googleClient = new OAuth2Client(
       this.configService.get<string>('GOOGLE_CLIENT_ID'),
@@ -159,8 +167,7 @@ export class AuthService {
   };
 
   async loginWithGoogle(payload: any, response: Response) {
-    const { email, name, avatar, googleId } = payload;
-
+    const { email, name, avatar, googleId, phone } = payload;
     if (!email) {
       throw new BadRequestException('Google data không hợp lệ');
     }
@@ -173,9 +180,11 @@ export class AuthService {
         name,
         avatar,
         googleId,
+        phone,
       });
     } else {
       user.avatar = avatar;
+      user.phone = phone;
 
       if (!user.googleId) {
         user.googleId = googleId;
@@ -189,5 +198,32 @@ export class AuthService {
     }
 
     return this.login(user, response);
+  }
+
+  // OTP
+  async sendOtp(dto: SendOtpDto) {
+    const otp = this.otpService.generateOtp();
+    await this.otpService.save('email', dto.value, otp);
+    await this.mailService.sendOtp(dto.value, otp);
+    return { method: 'email' };
+  }
+
+  /* ================= VERIFY OTP ================= */
+  async verifyOtp(dto: VerifyOtpDto) {
+    const isValid = await this.otpService.verify('email', dto.value, dto.otp);
+    if (!isValid) throw new BadRequestException('OTP không đúng');
+    await this.otpService.remove('email', dto.value);
+    return true;
+  }
+
+  /* ================= RESET PASSWORD ================= */
+  async resetPassword(dto: ResetPasswordDto) {
+    const user = await this.usersService.findByEmail(dto.value);
+    if (!user) {
+      throw new BadRequestException('User không tồn tại');
+    }
+    const salt = genSaltSync(10);
+    const hashNewPassword = hashSync(dto.password, salt);
+    await this.usersService.forgetPassword(dto.value, hashNewPassword);
   }
 }

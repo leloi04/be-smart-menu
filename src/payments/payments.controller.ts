@@ -85,6 +85,12 @@ export class PaymentsController {
     return this.paymentsService.handlePaymentSuccess(id);
   }
 
+  @Public()
+  @Post('handle-payment-failed')
+  async handlePaymentFailed(@Body('id') id: string) {
+    return this.paymentsService.handlePaymentFailed(id);
+  }
+
   @Post('summary')
   async summaryPayment(
     @Body('month') month: string,

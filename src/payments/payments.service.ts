@@ -293,6 +293,12 @@ export class PaymentsService {
     };
   }
 
+  async handlePaymentFailed(id: string) {
+    await this.PaymentModel.findByIdAndUpdate(id, {
+      status: 'failed',
+    });
+  }
+
   async fetchOrderUnpayment() {
     const dataPreOrder = await this.PreOrderModel.find({
       paymentStatus: 'unpaid',
