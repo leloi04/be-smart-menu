@@ -1,26 +1,28 @@
-import { Injectable } from '@nestjs/common';
-import * as nodemailer from 'nodemailer';
+import { Injectable, InternalServerErrorException } from '@nestjs/common';
+import sgMail from '@sendgrid/mail';
 
 @Injectable()
 export class MailService {
-  private transporter = nodemailer.createTransport({
-    service: 'gmail',
-    auth: {
-      user: process.env.MAIL_USER,
-      pass: process.env.MAIL_PASS,
-    },
-  });
+  constructor() {
+    sgMail.setApiKey(process.env.SENDGRID_API_KEY!);
+  }
 
   async sendOtp(email: string, otp: string) {
-    await this.transporter.sendMail({
-      to: email,
-      subject: 'Your OTP Code',
-      html: `
-        <h2>OTP Verification</h2>
-        <p>Your OTP code is:</p>
-        <h1>${otp}</h1>
-        <p>Valid for 5 minutes</p>
-      `,
-    });
+    try {
+      await sgMail.send({
+        to: email,
+        from: 'kiku2004bn@gmail.com',
+        subject: 'Your OTP Code',
+        html: `
+          <h2>OTP Verification</h2>
+          <p>Your OTP code is:</p>
+          <h1>${otp}</h1>
+          <p>Valid for 5 minutes</p>
+        `,
+      });
+    } catch (err) {
+      console.error('SendGrid error:', err);
+      throw new InternalServerErrorException('Không thể gửi email OTP');
+    }
   }
 }

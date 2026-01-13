@@ -1,6 +1,5 @@
 import { BadRequestException, Injectable } from '@nestjs/common';
 import { RedisService } from 'src/redis-cache/redis-cache.service';
-import { MailService } from './mail.service';
 
 @Injectable()
 export class OtpService {

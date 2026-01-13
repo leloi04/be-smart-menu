@@ -20,6 +20,7 @@ import { BullQueueModule } from './bull-queue/bull-queue.module';
 import { PreOrderModule } from './pre-order/pre-order.module';
 import { PromotionModule } from './promotion/promotion.module';
 import { SettingsModule } from './settings/settings.module';
+import { ReviewsModule } from './reviews/reviews.module';
 
 @Module({
   imports: [
@@ -54,6 +55,7 @@ import { SettingsModule } from './settings/settings.module';
     PreOrderModule,
     PromotionModule,
     SettingsModule,
+    ReviewsModule,
   ],
   controllers: [AppController],
   providers: [AppService],
