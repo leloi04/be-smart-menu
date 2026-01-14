@@ -11,7 +11,7 @@ import {
 import { ReviewsService } from './reviews.service';
 import { CreateReviewDto } from './dto/create-review.dto';
 import { UpdateReviewDto } from './dto/update-review.dto';
-import { ResponseMessage, User } from 'src/decorator/customize';
+import { Public, ResponseMessage, User } from 'src/decorator/customize';
 import { IUser } from 'src/types/global.constanst';
 
 @Controller('reviews')
@@ -24,6 +24,7 @@ export class ReviewsController {
     return this.reviewsService.create(createReviewDto, user);
   }
 
+  @Public()
   @ResponseMessage('Fetch reviews with paginate')
   @Get()
   findAll(
@@ -34,6 +35,7 @@ export class ReviewsController {
     return this.reviewsService.findAll(+currentPage, +limit, qs);
   }
 
+  @Public()
   @ResponseMessage('Fetch review by id')
   @Get(':id')
   findOne(@Param('id') id: string) {
@@ -55,6 +57,7 @@ export class ReviewsController {
     return this.reviewsService.remove(id, user);
   }
 
+  @Public()
   @ResponseMessage('get comments of item')
   @Post('comment-list')
   fetchListComment(@Body('id') id: string) {

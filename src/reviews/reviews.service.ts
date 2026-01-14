@@ -42,10 +42,7 @@ export class ReviewsService {
       .limit(defaultLimit)
       // @ts-ignore: Unreachable code error
       .sort(sort as any)
-      .populate({
-        path: 'permissions',
-        select: { _id: 1, name: 1, apiPath: 1, method: 1 },
-      })
+      .populate(population)
       .exec();
 
     return {
@@ -60,10 +57,7 @@ export class ReviewsService {
   }
 
   async findOne(id: string) {
-    return (await this.ReviewModel.findById(id))?.populate({
-      path: 'permissions',
-      select: { _id: 1, name: 1, apiPath: 1, method: 1, module: 1 },
-    });
+    return await this.ReviewModel.findById(id);
   }
 
   async update(id: string, updateReviewDto: UpdateReviewDto, user: IUser) {
