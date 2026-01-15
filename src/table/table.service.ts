@@ -1,5 +1,7 @@
 import {
   BadRequestException,
+  forwardRef,
+  Inject,
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
@@ -12,12 +14,16 @@ import { IUser } from 'src/types/global.constanst';
 import aqp from 'api-query-params';
 import { randomBytes } from 'crypto';
 import { Order, OrderDocument } from 'src/order/schemas/order.schema';
+import { OrderGateway } from 'src/order/order.gateway';
 
 @Injectable()
 export class TableService {
   constructor(
     @InjectModel(Table.name) private TableModel: SoftDeleteModel<TableDocument>,
-    @InjectModel(Order.name) private OrderModel: SoftDeleteModel<OrderDocument>,
+    @InjectModel(Order.name)
+    private OrderModel: SoftDeleteModel<OrderDocument>,
+    @Inject(forwardRef(() => OrderGateway))
+    private readonly orderGateway: OrderGateway,
   ) {}
 
   async create(createTableDto: CreateTableDto, user: IUser) {
@@ -134,6 +140,9 @@ export class TableService {
     }
     if (status == 'cleaning') {
       const isCurrentOrder = table.currentOrder;
+      const tableNumber = table.tableNumber;
+      await this.orderGateway.removeTableCompleted(tableNumber);
+      await this.orderGateway.emitOrderStatusChanged(tableNumber, status);
       if (!isCurrentOrder) {
         return await this.TableModel.findByIdAndUpdate(tableId, {
           status,

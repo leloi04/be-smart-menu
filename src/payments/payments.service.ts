@@ -13,6 +13,7 @@ import {
   PreOrder,
   PreOrderDocument,
 } from 'src/pre-order/schemas/pre-order.schema';
+import { TableService } from 'src/table/table.service';
 
 @Injectable()
 export class PaymentsService {
@@ -26,27 +27,8 @@ export class PaymentsService {
     @InjectModel(Table.name)
     private TableModel: SoftDeleteModel<TableDocument>,
     private readonly orderService: OrderService,
+    private readonly tableService: TableService,
   ) {}
-
-  create(createPaymentDto: CreatePaymentDto) {
-    return 'This action adds a new payment';
-  }
-
-  findAll() {
-    return `This action returns all payments`;
-  }
-
-  findOne(id: number) {
-    return `This action returns a #${id} payment`;
-  }
-
-  update(id: number, updatePaymentDto: UpdatePaymentDto) {
-    return `This action updates a #${id} payment`;
-  }
-
-  remove(id: number) {
-    return `This action removes a #${id} payment`;
-  }
 
   async createVnpayUrl(orderId: string, amount: number) {
     const tmnCode = process.env.VNP_TMN_CODE;
@@ -286,6 +268,11 @@ export class PaymentsService {
     });
     const tableNumber = table.tableNumber;
     await this.orderService.orderPaymentCompleted(tableNumber);
+
+    await this.tableService.handleChangeStatusTable(
+      table._id.toString(),
+      'cleaning',
+    );
 
     return {
       success: true,

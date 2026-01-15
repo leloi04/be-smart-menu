@@ -1,5 +1,7 @@
 import {
   BadRequestException,
+  forwardRef,
+  Inject,
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
@@ -21,6 +23,7 @@ export class OrderService {
     private OrderModel: SoftDeleteModel<OrderDocument>,
     @InjectModel(Table.name)
     private TableModel: SoftDeleteModel<TableDocument>,
+    @Inject(forwardRef(() => OrderGateway))
     private readonly orderGateway: OrderGateway,
     private readonly redis: RedisService,
   ) {}

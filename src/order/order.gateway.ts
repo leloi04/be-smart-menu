@@ -26,6 +26,7 @@ export class OrderGateway {
     @Inject(forwardRef(() => OrderService))
     private readonly orderService: OrderService,
     private readonly redis: RedisService,
+    @Inject(forwardRef(() => TableService))
     private readonly tableService: TableService,
     private readonly preOrderService: PreOrderService,
   ) {}
@@ -289,9 +290,9 @@ export class OrderGateway {
     const table = await this.tableService.findOne(tableId);
     const tableNumber = table?.tableNumber;
     if (!tableNumber) return;
-    const redisFirstKey = `first_order_${tableNumber}`; // order gốc lần đầu
-    const addOrderKey = `add_order_${tableNumber}`; // mảng batch add items
-    const completedOrderKey = `completed_order_${tableNumber}`; // order đã hoàn thành
+    const redisFirstKey = `first_order_${tableNumber}`;
+    const addOrderKey = `add_order_${tableNumber}`;
+    const completedOrderKey = `completed_order_${tableNumber}`;
 
     await this.redis.del(redisFirstKey);
     await this.redis.del(addOrderKey);
@@ -306,6 +307,7 @@ export class OrderGateway {
     client.leave(`table_${tableId}`);
   }
 
+  // Get detail order of table in redis
   @SubscribeMessage('getDetailTable')
   async handleGetDetailTable(@MessageBody() tableNumber: string) {
     const redisFirstKey = `first_order_${tableNumber}`;
@@ -333,6 +335,7 @@ export class OrderGateway {
     });
   }
 
+  // Confirm order
   @SubscribeMessage('handleConfirmNotifyTable')
   async handleConfirmNotify(
     @MessageBody()
@@ -367,6 +370,7 @@ export class OrderGateway {
       .emit('staffTableNotificationSync', confirmData);
   }
 
+  // Cancellation of order
   @SubscribeMessage('handleCancelNotifyTable')
   async handleCancelNotify(
     @MessageBody()
@@ -414,10 +418,19 @@ export class OrderGateway {
     this.server.to(`table_${tableId}`).emit('tableUpdatedRealtime', table);
   }
 
+  async removeTableCompleted(tableNumber: string) {
+    const key = 'data_table';
+    const dataTables = (await this.redis.get(key)) || [];
+    const dataSet = dataTables.filter((t) => t.tableNumber != tableNumber);
+    await this.redis.set(key, dataSet);
+    this.server.to('staff_room').emit('dataTable', dataSet);
+  }
+
   async emitOrderStatusChanged(tableNumber: string, status: string) {
     this.server.to(`table_${tableNumber}`).emit('orderStatusChanged', status);
   }
 
+  // Handle classification of dishes after confirmation
   async processOrderItems(data: {
     orderItems: any[];
     tableNumber?: string;
@@ -486,6 +499,7 @@ export class OrderGateway {
     }
   }
 
+  // Handle show data order of table up staff ui
   async handleDataTable(
     tableNumber: string,
     totalItems: number,
@@ -535,6 +549,7 @@ export class OrderGateway {
     await this.redis.set(redisKey, updatedData);
   }
 
+  // Handle show data order online up staff ui
   async handleDataOnline(
     id: string,
     customerName: string,
@@ -557,6 +572,7 @@ export class OrderGateway {
     await this.redis.set(redisKey, updatedData);
   }
 
+  // Handle completed item in kitchen
   @SubscribeMessage('handleCompletedItem')
   async handleCompletedItem(@MessageBody() data: any) {
     const {
