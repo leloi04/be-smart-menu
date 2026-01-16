@@ -159,7 +159,10 @@ export class PaymentsService {
    * 💵 Thanh toán bằng tiền mặt
    */
   async createCashPayment(orderId: string, amount: number, orderIn: string) {
-    const isExistPayment = await this.PaymentModel.findOne({ orderId });
+    const isExistPayment = await this.PaymentModel.findOne({
+      orderId,
+      status: 'completed',
+    });
     if (isExistPayment) {
       throw new BadRequestException('Đơn hàng này đã được thanh toán!');
     }
@@ -201,7 +204,10 @@ export class PaymentsService {
    * 💵 Thanh toán qua ngân hàng
    */
   async createBankPayment(orderId: string, amount: number, orderIn: string) {
-    const isExistPayment = await this.PaymentModel.findOne({ orderId });
+    const isExistPayment = await this.PaymentModel.findOne({
+      orderId,
+      status: 'completed',
+    });
     if (isExistPayment) {
       throw new BadRequestException('Đơn hàng này đã được thanh toán!');
     }
