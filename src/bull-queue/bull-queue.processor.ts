@@ -9,6 +9,12 @@ import {
   ReservationDocument,
 } from 'src/reservations/schemas/reservation.schema';
 import { SoftDeleteModel } from 'soft-delete-plugin-mongoose';
+import dayjs from 'dayjs';
+import utc from 'dayjs/plugin/utc';
+import timezone from 'dayjs/plugin/timezone';
+
+dayjs.extend(utc);
+dayjs.extend(timezone);
 
 @Processor(QUEUE_NAMES.RESERVATION)
 export class BullQueueProcessor extends WorkerHost {
@@ -24,9 +30,9 @@ export class BullQueueProcessor extends WorkerHost {
   /** 🕒 Xử lý job “markExpiredReservations” */
   async process(job: Job): Promise<void> {
     if (job.name === 'markExpiredReservations') {
-      const now = new Date();
-      const today = now.toISOString().split('T')[0];
-      const currentTime = now.toTimeString().slice(0, 5);
+      const now = dayjs().tz('Asia/Ho_Chi_Minh');
+      const today = now.format('YYYY-MM-DD');
+      const currentTime = now.format('HH:mm');
 
       const result = await this.ReservationModel.updateMany(
         {
