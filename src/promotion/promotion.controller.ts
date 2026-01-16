@@ -24,6 +24,7 @@ export class PromotionController {
     return this.promotionService.create(createPromotionDto, user);
   }
 
+  @Public()
   @ResponseMessage('Fetch Promotion with paginate')
   @Get()
   findAll(

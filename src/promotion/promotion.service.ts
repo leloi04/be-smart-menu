@@ -119,10 +119,15 @@ export class PromotionService {
       status: true,
       $or: [
         { displayMode: 'MANUAL' },
+
         {
           displayMode: 'AUTO',
-          startAt: { $lte: now },
-          endAt: { $gte: now },
+          $expr: {
+            $and: [
+              { $lte: [{ $toDate: '$startAt' }, now] },
+              { $gte: [{ $toDate: '$endAt' }, now] },
+            ],
+          },
         },
       ],
     })
